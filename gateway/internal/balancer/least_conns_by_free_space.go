@@ -1,13 +1,9 @@
 package balancer
 
 import (
-	"errors"
 	"fmt"
 	"pastebin/gateway/internal/nodepool"
 )
-
-var ErrNoNodes error = errors.New("no nodes found")
-var ErrNoNodesCanWriteThisFile error = errors.New("file too big to be written on any node")
 
 type LeastConnsByFreeSpace struct {
 	pool *nodepool.Pool
@@ -36,7 +32,7 @@ OuterLoop:
 		}
 		candidates++
 		nodeStatus := node.GetStatus()
-		if nodeStatus.FreeSpace-1024*1024*10 < size {
+		if nodeStatus.FreeSpace-ReserveSpace < size {
 			continue
 		}
 
