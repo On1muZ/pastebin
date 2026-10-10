@@ -1,12 +1,24 @@
 package nodepool
 
 import (
+	"net/url"
 	"sync"
 	"testing"
 )
 
+func TestNewNodeKeepsIDAndAddr(t *testing.T) {
+	addr := url.URL{Scheme: "grpc", Host: "storage-1:50051"}
+	node := NewNode("storage-1", addr)
+	if node.ID != "storage-1" {
+		t.Fatalf("incorrect node id: got %q, want %q", node.ID, "storage-1")
+	}
+	if got := node.Addr.String(); got != addr.String() {
+		t.Fatalf("incorrect node addr: got %q, want %q", got, addr.String())
+	}
+}
+
 func TestNewNode(t *testing.T) {
-	node := NewNode()
+	node := newUniqueNode()
 	if node.IsAlive() {
 		t.Fatalf("new node must be dead by default")
 	}
@@ -19,7 +31,7 @@ func TestNewNode(t *testing.T) {
 }
 
 func TestMarkDeadAndMarkAlive(t *testing.T) {
-	node := NewNode()
+	node := newUniqueNode()
 	node.MarkAlive()
 	if !node.IsAlive() {
 		t.Fatalf("mark alive do nothing")
@@ -31,7 +43,7 @@ func TestMarkDeadAndMarkAlive(t *testing.T) {
 }
 
 func TestIncAndDecAliveConns(t *testing.T) {
-	node := NewNode()
+	node := newUniqueNode()
 	for i := 0; i < 32; i++ {
 		node.IncAliveConn()
 	}
@@ -47,7 +59,7 @@ func TestIncAndDecAliveConns(t *testing.T) {
 }
 
 func TestStatusChanging(t *testing.T) {
-	node := NewNode()
+	node := newUniqueNode()
 	s := Status{
 		FreeSpace:  500,
 		TotalSpace: 1000,
@@ -73,7 +85,7 @@ func TestStatusChanging(t *testing.T) {
 func TestConcurentAddingFreeSpace(t *testing.T) {
 	n := 20
 	m := 10
-	node := NewNode()
+	node := newUniqueNode()
 	var wg sync.WaitGroup
 	for range n {
 		wg.Add(1)
@@ -93,7 +105,7 @@ func TestConcurentAddingFreeSpace(t *testing.T) {
 func TestConcurentDeletingFreeSpace(t *testing.T) {
 	n := 20
 	m := 10
-	node := NewNode()
+	node := newUniqueNode()
 	node.AddFreeSpace(300)
 	var wg sync.WaitGroup
 	for range n {
@@ -112,7 +124,7 @@ func TestConcurentDeletingFreeSpace(t *testing.T) {
 }
 
 func TestSpaceChangingKeepsTotalSpace(t *testing.T) {
-	node := NewNode()
+	node := newUniqueNode()
 	node.ChangeStatus(Status{FreeSpace: 500, TotalSpace: 1000})
 	node.AddFreeSpace(100)
 	node.DeleteFreeSpace(50)
@@ -124,7 +136,7 @@ func TestSpaceChangingKeepsTotalSpace(t *testing.T) {
 func TestConcurrentIncAndDecAliveConns(t *testing.T) {
 	n := 20
 	m := 10
-	node := NewNode()
+	node := newUniqueNode()
 	var wg sync.WaitGroup
 	for range n {
 		wg.Add(1)
@@ -145,7 +157,7 @@ func TestConcurrentIncAndDecAliveConns(t *testing.T) {
 func TestConcurrentSpaceChangingAndReading(t *testing.T) {
 	n := 20
 	m := 10
-	node := NewNode()
+	node := newUniqueNode()
 	node.ChangeStatus(Status{FreeSpace: 1000, TotalSpace: 2000})
 	var wg sync.WaitGroup
 	for range n {

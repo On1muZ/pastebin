@@ -8,7 +8,7 @@ import (
 func TestLeastConnsPrefersLargerFreeShare(t *testing.T) {
 	less := newTestNode(50*gib, 100*gib, 0, true)
 	more := newTestNode(80*gib, 100*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{less, more}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{less, more}))
 
 	if got := mustNext(t, algo, gib, nil); got != more {
 		t.Fatalf("must pick node with larger free share (80%% vs 50%%)")
@@ -19,7 +19,7 @@ func TestLeastConnsComparesShareNotAbsoluteSpace(t *testing.T) {
 	// big has more free bytes, but only 9% of its disk is free.
 	big := newTestNode(90*gib, 1000*gib, 0, true)
 	small := newTestNode(40*gib, 50*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{big, small}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{big, small}))
 
 	if got := mustNext(t, algo, gib, nil); got != small {
 		t.Fatalf("weight is free/total share, node with 80%% free must win over 9%% free")
@@ -29,7 +29,7 @@ func TestLeastConnsComparesShareNotAbsoluteSpace(t *testing.T) {
 func TestLeastConnsPrefersFewerConns(t *testing.T) {
 	busy := newTestNode(50*gib, 100*gib, 5, true)
 	idle := newTestNode(50*gib, 100*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{busy, idle}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{busy, idle}))
 
 	if got := mustNext(t, algo, gib, nil); got != idle {
 		t.Fatalf("must pick node with fewer active conns at equal free share")
@@ -52,7 +52,7 @@ func TestLeastConnsWeighsConnsAgainstShare(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			busy := newTestNode(tc.busyFree*gib, 100*gib, tc.busyConns, true)
 			idle := newTestNode(tc.idleFree*gib, 100*gib, 0, true)
-			algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{busy, idle}))
+			algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{busy, idle}))
 
 			want := idle
 			if tc.wantBusy {
@@ -69,7 +69,7 @@ func TestLeastConnsSkipsExcludedBest(t *testing.T) {
 	best := newTestNode(90*gib, 100*gib, 0, true)
 	second := newTestNode(60*gib, 100*gib, 0, true)
 	third := newTestNode(30*gib, 100*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{best, second, third}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{best, second, third}))
 
 	if got := mustNext(t, algo, gib, []*nodepool.Node{best}); got != second {
 		t.Fatalf("must pick second best when the best is excluded")
@@ -82,7 +82,7 @@ func TestLeastConnsSkipsExcludedBest(t *testing.T) {
 func TestLeastConnsSkipsDeadBest(t *testing.T) {
 	dead := newTestNode(100*gib, 100*gib, 0, false)
 	alive := newTestNode(10*gib, 100*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{dead, alive}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{dead, alive}))
 
 	if got := mustNext(t, algo, gib, nil); got != alive {
 		t.Fatalf("dead node must never be picked")
@@ -93,7 +93,7 @@ func TestLeastConnsSkipsBestWithoutEnoughSpace(t *testing.T) {
 	// tiny has the best share (90%) but only 9 GiB free.
 	tiny := newTestNode(9*gib, 10*gib, 0, true)
 	huge := newTestNode(500*gib, 1000*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{tiny, huge}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{tiny, huge}))
 
 	if got := mustNext(t, algo, 20*gib, nil); got != huge {
 		t.Fatalf("node that cannot hold the file must be skipped even with best share")
@@ -103,7 +103,7 @@ func TestLeastConnsSkipsBestWithoutEnoughSpace(t *testing.T) {
 func TestLeastConnsReactsToLoadChanges(t *testing.T) {
 	a := newTestNode(50*gib, 100*gib, 0, true)
 	b := newTestNode(50*gib, 100*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{a, b}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{a, b}))
 
 	if got := mustNext(t, algo, gib, nil); got != a {
 		t.Fatalf("at equal weight the first node of the pool is expected")
@@ -125,7 +125,7 @@ func TestLeastConnsReactsToLoadChanges(t *testing.T) {
 func TestLeastConnsReactsToStatusChanges(t *testing.T) {
 	a := newTestNode(80*gib, 100*gib, 0, true)
 	b := newTestNode(50*gib, 100*gib, 0, true)
-	algo := NewLeastConnsByFreeSpace(nodepool.NewPool([]*nodepool.Node{a, b}))
+	algo := NewLeastConnsByFreeSpace(mustPool(t, []*nodepool.Node{a, b}))
 
 	if got := mustNext(t, algo, gib, nil); got != a {
 		t.Fatalf("node a with 80%% free must win initially")

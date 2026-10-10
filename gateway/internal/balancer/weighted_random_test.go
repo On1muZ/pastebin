@@ -30,7 +30,7 @@ func assertShare(t *testing.T, counts map[*nodepool.Node]int, node *nodepool.Nod
 func TestWeightedRandomSingleCandidateIsAlwaysPicked(t *testing.T) {
 	only := newTestNode(30*gib, 100*gib, 0, true)
 	dead := newTestNode(100*gib, 100*gib, 0, false)
-	algo := NewWeightedRandom(nodepool.NewPool([]*nodepool.Node{dead, only}))
+	algo := NewWeightedRandom(mustPool(t, []*nodepool.Node{dead, only}))
 
 	for range 200 {
 		if got := mustNext(t, algo, gib, nil); got != only {
@@ -43,7 +43,7 @@ func TestWeightedRandomFollowsFreeShare(t *testing.T) {
 	a := newTestNode(60*gib, 100*gib, 0, true)
 	b := newTestNode(30*gib, 100*gib, 0, true)
 	c := newTestNode(10*gib, 100*gib, 0, true)
-	algo := NewWeightedRandom(nodepool.NewPool([]*nodepool.Node{a, b, c}))
+	algo := NewWeightedRandom(mustPool(t, []*nodepool.Node{a, b, c}))
 
 	counts := countPicks(t, algo, gib, nil)
 
@@ -57,7 +57,7 @@ func TestWeightedRandomRenormalizesAfterExclusion(t *testing.T) {
 	a := newTestNode(60*gib, 100*gib, 0, true)
 	b := newTestNode(30*gib, 100*gib, 0, true)
 	c := newTestNode(10*gib, 100*gib, 0, true)
-	algo := NewWeightedRandom(nodepool.NewPool([]*nodepool.Node{a, b, c}))
+	algo := NewWeightedRandom(mustPool(t, []*nodepool.Node{a, b, c}))
 
 	counts := countPicks(t, algo, gib, []*nodepool.Node{a})
 
@@ -74,7 +74,7 @@ func TestWeightedRandomIgnoresActiveConns(t *testing.T) {
 	// does not influence the choice. This documents that difference.
 	idle := newTestNode(50*gib, 100*gib, 0, true)
 	busy := newTestNode(50*gib, 100*gib, 100, true)
-	algo := NewWeightedRandom(nodepool.NewPool([]*nodepool.Node{idle, busy}))
+	algo := NewWeightedRandom(mustPool(t, []*nodepool.Node{idle, busy}))
 
 	counts := countPicks(t, algo, gib, nil)
 
@@ -85,7 +85,7 @@ func TestWeightedRandomIgnoresActiveConns(t *testing.T) {
 func TestWeightedRandomReactsToStatusChanges(t *testing.T) {
 	a := newTestNode(50*gib, 100*gib, 0, true)
 	b := newTestNode(50*gib, 100*gib, 0, true)
-	algo := NewWeightedRandom(nodepool.NewPool([]*nodepool.Node{a, b}))
+	algo := NewWeightedRandom(mustPool(t, []*nodepool.Node{a, b}))
 
 	a.ChangeStatus(nodepool.Status{FreeSpace: 10 * gib, TotalSpace: 100 * gib})
 	counts := countPicks(t, algo, gib, nil)

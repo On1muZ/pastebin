@@ -95,7 +95,7 @@ func TestAlgorithmsErrors(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(algoName+"/"+tc.name, func(t *testing.T) {
 				nodes, except := tc.build()
-				node, err := newAlgo(nodepool.NewPool(nodes)).Next(tc.size, except)
+				node, err := newAlgo(mustPool(t, nodes)).Next(tc.size, except)
 				if !errors.Is(err, tc.wantErr) {
 					t.Fatalf("incorrect error: got %v, want %v", err, tc.wantErr)
 				}
@@ -112,7 +112,7 @@ func TestAlgorithmsAcceptExactlyReservedSpace(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			size := 5 * gib
 			n := newTestNode(size+ReserveSpace, 100*gib, 0, true)
-			got := mustNext(t, newAlgo(nodepool.NewPool([]*nodepool.Node{n})), size, nil)
+			got := mustNext(t, newAlgo(mustPool(t, []*nodepool.Node{n})), size, nil)
 			if got != n {
 				t.Fatalf("node with exactly size+reserve free space must be accepted")
 			}
@@ -128,7 +128,7 @@ func TestAlgorithmsNeverPickExcludedDeadOrFullNodes(t *testing.T) {
 			dead := newTestNode(100*gib, 100*gib, 0, false)
 			excluded := newTestNode(100*gib, 100*gib, 0, true)
 			full := newTestNode(gib, 100*gib, 0, true)
-			algo := newAlgo(nodepool.NewPool([]*nodepool.Node{good1, good2, dead, excluded, full}))
+			algo := newAlgo(mustPool(t, []*nodepool.Node{good1, good2, dead, excluded, full}))
 			except := []*nodepool.Node{excluded}
 			for range 1000 {
 				got := mustNext(t, algo, 10*gib, except)
@@ -150,7 +150,7 @@ func TestAlgorithmsConcurrentUse(t *testing.T) {
 				newTestNode(30*gib, 100*gib, 0, true),
 				newTestNode(10*gib, 100*gib, 0, true),
 			}
-			algo := newAlgo(nodepool.NewPool(nodes))
+			algo := newAlgo(mustPool(t, nodes))
 
 			var wg sync.WaitGroup
 			for range 8 {
