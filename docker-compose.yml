@@ -1,0 +1,68 @@
+name: pastebin
+
+x-storagenode: &storagenode
+  build:
+    context: .
+    dockerfile: storagenode/Dockerfile
+  networks:
+    - storage
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "nc", "-z", "localhost", "8050"]
+    interval: 10s
+    timeout: 3s
+    retries: 3
+    start_period: 5s
+
+services:
+  storagenode-1:
+    <<: *storagenode
+    ports:
+      - "8051:8050"
+    volumes:
+      - storagenode-1-data:/data
+
+  storagenode-2:
+    <<: *storagenode
+    ports:
+      - "8052:8050"
+    volumes:
+      - storagenode-2-data:/data
+
+  storagenode-3:
+    <<: *storagenode
+    ports:
+      - "8053:8050"
+    volumes:
+      - storagenode-3-data:/data
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    networks:
+      - gateway
+      - storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - gateway-data:/data
+    ports:
+      - "8080:8080"
+
+networks:
+  gateway:
+    driver: bridge
+  storage:
+    driver: bridge
+
+volumes:
+  storagenode-1-data:
+  storagenode-2-data:
+  storagenode-3-data:
+  gateway-data:
