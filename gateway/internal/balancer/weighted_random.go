@@ -39,7 +39,7 @@ OuterLoop:
 			continue
 		}
 		candidates = append(candidates, node)
-		weight := float64(nodeStatus.FreeSpace) / float64(nodeStatus.TotalSpace)
+		weight := float64(nodeStatus.FreeSpace) / float64(nodeStatus.TotalSpace+1)
 		candidatesWeight = append(candidatesWeight, weight)
 		total += weight
 		bestNode = node // default value, fix returns (nil, nil)

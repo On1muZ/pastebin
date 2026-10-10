@@ -36,7 +36,7 @@ OuterLoop:
 			continue
 		}
 
-		weight := (float64(nodeStatus.FreeSpace) / float64(nodeStatus.TotalSpace)) / float64(node.GetAliveConns()+1)
+		weight := (float64(nodeStatus.FreeSpace) / float64(nodeStatus.TotalSpace+1)) / float64(node.GetAliveConns()+1)
 		if weight > maxWeight {
 			maxWeight = weight
 			bestNode = node
