@@ -1,7 +1,6 @@
 package nodepool
 
 import (
-	"net/url"
 	"sync"
 	"sync/atomic"
 )
@@ -13,14 +12,14 @@ type Status struct {
 
 type Node struct {
 	ID         string
-	Addr       url.URL
+	Addr       string
 	mu         sync.Mutex
 	aliveConns atomic.Int32
 	alive      atomic.Bool
 	status     atomic.Pointer[Status]
 }
 
-func NewNode(ID string, Addr url.URL) *Node {
+func NewNode(ID string, Addr string) *Node {
 	n := &Node{ID: ID, Addr: Addr}
 	n.status.Store(&Status{})
 	return n

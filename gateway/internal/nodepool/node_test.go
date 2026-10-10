@@ -1,19 +1,18 @@
 package nodepool
 
 import (
-	"net/url"
 	"sync"
 	"testing"
 )
 
 func TestNewNodeKeepsIDAndAddr(t *testing.T) {
-	addr := url.URL{Scheme: "grpc", Host: "storage-1:50051"}
+	addr := "storage-1:50051"
 	node := NewNode("storage-1", addr)
 	if node.ID != "storage-1" {
 		t.Fatalf("incorrect node id: got %q, want %q", node.ID, "storage-1")
 	}
-	if got := node.Addr.String(); got != addr.String() {
-		t.Fatalf("incorrect node addr: got %q, want %q", got, addr.String())
+	if node.Addr != addr {
+		t.Fatalf("incorrect node addr: got %q, want %q", node.Addr, addr)
 	}
 }
 

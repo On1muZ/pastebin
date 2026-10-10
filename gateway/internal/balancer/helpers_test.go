@@ -2,7 +2,6 @@ package balancer
 
 import (
 	"fmt"
-	"net/url"
 	"pastebin/gateway/internal/nodepool"
 	"sync/atomic"
 	"testing"
@@ -18,7 +17,7 @@ var nodeSeq atomic.Int64
 // checker will use.
 func newTestNode(free, total int64, conns int, alive bool) *nodepool.Node {
 	id := fmt.Sprintf("node-%d", nodeSeq.Add(1))
-	n := nodepool.NewNode(id, url.URL{Scheme: "grpc", Host: id + ":50051"})
+	n := nodepool.NewNode(id, id+":50051")
 	n.ChangeStatus(nodepool.Status{FreeSpace: free, TotalSpace: total})
 	for range conns {
 		n.IncAliveConn()

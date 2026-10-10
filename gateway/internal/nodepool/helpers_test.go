@@ -2,7 +2,6 @@ package nodepool
 
 import (
 	"fmt"
-	"net/url"
 	"sync/atomic"
 	"testing"
 )
@@ -12,7 +11,7 @@ var nodeSeq atomic.Int64
 // newTestNode builds a node whose address is derived from its id, so distinct
 // ids always give distinct addresses.
 func newTestNode(id string) *Node {
-	return NewNode(id, url.URL{Scheme: "grpc", Host: id + ":50051"})
+	return NewNode(id, id+":50051")
 }
 
 // newUniqueNode builds a node with an id that was never handed out before, for
