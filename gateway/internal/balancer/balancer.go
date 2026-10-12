@@ -1,21 +1,16 @@
 package balancer
 
 import (
-	"log/slog"
 	"pastebin/gateway/internal/nodepool"
 )
 
 type Balancer struct {
-	pool      *nodepool.Pool
 	algorithm Algorithm
-	log       *slog.Logger
 }
 
-func NewBalancer(pool *nodepool.Pool, algorithm Algorithm, log *slog.Logger) *Balancer {
+func NewBalancer(algorithm Algorithm) *Balancer {
 	return &Balancer{
-		pool:      pool,
 		algorithm: algorithm,
-		log:       log,
 	}
 }
 
