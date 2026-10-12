@@ -42,6 +42,7 @@ services:
       dockerfile: gateway/Dockerfile
     networks:
       - gateway
+      - gateway-metadata
       - storage
     restart: unless-stopped
     healthcheck:
@@ -54,15 +55,49 @@ services:
       - gateway-data:/data
     ports:
       - "8080:8080"
+    depends_on:
+      gateway-postgres:
+        condition: service_healthy
+
+  gateway-postgres:
+    image: postgres:16-alpine
+    networks:
+      - gateway-metadata
+    environment:
+      POSTGRES_USER: "user"
+      POSTGRES_PASSWORD: "secret"
+      POSTGRES_DB: "gateway"
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - gateway-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 networks:
   gateway:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.151.10.0/24
   storage:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 10.151.11.0/24
+  gateway-metadata:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.151.12.0/24
 
 volumes:
   storagenode-1-data:
   storagenode-2-data:
   storagenode-3-data:
   gateway-data:
+  gateway-postgres:
