@@ -269,3 +269,66 @@ func TestConcurrentAddingSameIDKeepsOnlyOne(t *testing.T) {
 		t.Fatalf("incorrect nodes count: got %d, want 2", got)
 	}
 }
+
+func TestGettingNodeByID(t *testing.T) {
+	nodes := []*Node{newTestNode("a"), newTestNode("b"), newTestNode("c")}
+	p := mustNewPool(t, nodes)
+	got, ok := p.GetNodeByID("b")
+	if !ok {
+		t.Fatal("node b not found")
+	}
+	if got != nodes[1] {
+		t.Fatalf("returned another pointer: got %p, want %p", got, nodes[1])
+	}
+}
+
+func TestGettingNodeByUnknownID(t *testing.T) {
+	p := mustNewPool(t, []*Node{newTestNode("a")})
+	got, ok := p.GetNodeByID("unknown")
+	if ok || got != nil {
+		t.Fatalf("incorrect result for unknown id: got (%v, %t), want (nil, false)", got, ok)
+	}
+}
+
+func TestGettingNodeByIDFromEmptyPool(t *testing.T) {
+	p := mustNewPool(t, []*Node{})
+	got, ok := p.GetNodeByID("a")
+	if ok || got != nil {
+		t.Fatalf("incorrect result for empty pool: got (%v, %t), want (nil, false)", got, ok)
+	}
+}
+
+func TestGettingNodeByIDAfterAdd(t *testing.T) {
+	p := mustNewPool(t, []*Node{newTestNode("a")})
+	added := newTestNode("b")
+	if err := p.Add([]*Node{added}); err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
+	got, ok := p.GetNodeByID("b")
+	if !ok || got != added {
+		t.Fatalf("added node not found: got (%v, %t), want (%p, true)", got, ok, added)
+	}
+	if _, ok := p.GetNodeByID("a"); !ok {
+		t.Fatal("old node lost after Add")
+	}
+}
+
+func TestConcurrentGettingNodeByIDAndAdding(t *testing.T) {
+	first := newTestNode("first")
+	p := mustNewPool(t, []*Node{first})
+	var wg sync.WaitGroup
+	for range 10 {
+		wg.Go(func() {
+			if err := p.Add([]*Node{newUniqueNode()}); err != nil {
+				t.Errorf("Add returned error: %v", err)
+			}
+		})
+		wg.Go(func() {
+			got, ok := p.GetNodeByID("first")
+			if !ok || got != first {
+				t.Errorf("node first not found during concurrent Add: got (%v, %t)", got, ok)
+			}
+		})
+	}
+	wg.Wait()
+}

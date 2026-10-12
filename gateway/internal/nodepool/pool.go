@@ -82,3 +82,13 @@ func (p *Pool) checkDuplicateNodeID(nodeToAdd []*Node) (*[]string, error) {
 	}
 	return &duplicates, fmt.Errorf("pool contains duplicated ids: %w", ErrPoolContainsDuplicatedValues)
 }
+
+func (p *Pool) GetNodeByID(id string) (*Node, bool) {
+	nodes := *p.nodes.Load()
+	for _, n := range nodes {
+		if n.ID == id {
+			return n, true
+		}
+	}
+	return nil, false
+}
