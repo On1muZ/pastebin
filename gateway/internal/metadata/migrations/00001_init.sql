@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS nodes(
 
 CREATE TABLE IF NOT EXISTS blobs(
   id TEXT PRIMARY KEY NOT NULL CHECK (id ~ '^[0-9a-f]{32}$'),
-  size BIGINT,
+  size BIGINT NOT NULL,
   hash VARCHAR(64),
   status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'committed', 'deleting')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
