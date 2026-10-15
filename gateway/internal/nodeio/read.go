@@ -30,10 +30,10 @@ func (r *blobReader) Close() error {
 	return nil
 }
 
-func Read(ctx context.Context, client storagenodev1.StorageNodeClient, id string, offset int64) (io.ReadCloser, error) {
+func Read(ctx context.Context, client storagenodev1.StorageNodeClient, id string, offset, length int64) (io.ReadCloser, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	stream, err := client.GetBlob(ctx, &storagenodev1.GetBlobRequest{
-		BlobId: id, Offset: offset,
+		BlobId: id, Offset: offset, Length: length,
 	})
 	if err != nil {
 		cancel()

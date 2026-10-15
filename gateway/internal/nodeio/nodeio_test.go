@@ -162,7 +162,7 @@ func mustWrite(t *testing.T, client storagenodev1.StorageNodeClient, id string, 
 
 func readAll(t *testing.T, client storagenodev1.StorageNodeClient, id string, offset int64) []byte {
 	t.Helper()
-	r, err := Read(context.Background(), client, id, offset)
+	r, err := Read(context.Background(), client, id, offset, 0)
 	if err != nil {
 		t.Fatalf("Read returned error: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestReadWithBufferSmallerThanChunk(t *testing.T) {
 	data := randomBytes(t, 4500)
 	mustWrite(t, client, "blob", data)
 
-	r, err := Read(context.Background(), client, "blob", 0)
+	r, err := Read(context.Background(), client, "blob", 0, 0)
 	if err != nil {
 		t.Fatalf("Read returned error: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestReadWithBufferSmallerThanChunk(t *testing.T) {
 // the gateway server relies on it to switch to another node.
 func TestReadReturnsNotFoundImmediately(t *testing.T) {
 	_, client := startFakeNode(t)
-	r, err := Read(context.Background(), client, "missing", 0)
+	r, err := Read(context.Background(), client, "missing", 0, 0)
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("incorrect error: got %v, want code NotFound", err)
 	}
@@ -298,7 +298,7 @@ func TestReadAfterCloseFails(t *testing.T) {
 	_, client := startFakeNode(t)
 	mustWrite(t, client, "blob", randomBytes(t, 5*chunkSize))
 
-	r, err := Read(context.Background(), client, "blob", 0)
+	r, err := Read(context.Background(), client, "blob", 0, 0)
 	if err != nil {
 		t.Fatalf("Read returned error: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestCopyBetweenNodes(t *testing.T) {
 	data := randomBytes(t, 2*chunkSize+123)
 	mustWrite(t, clientA, "blob", data)
 
-	src, err := Read(context.Background(), clientA, "blob", 0)
+	src, err := Read(context.Background(), clientA, "blob", 0, 0)
 	if err != nil {
 		t.Fatalf("Read returned error: %v", err)
 	}
