@@ -46,6 +46,8 @@ func (s *Server) toStatus(err error) error {
 		return status.Error(codes.Canceled, err.Error())
 	case errors.Is(err, metadata.ErrAlreadyExists):
 		return status.Error(codes.AlreadyExists, "blob already exists")
+	case errors.Is(err, metadata.ErrConflict):
+		return status.Error(codes.FailedPrecondition, "blob is being deleted")
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, err.Error())
 	}

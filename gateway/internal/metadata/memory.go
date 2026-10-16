@@ -21,11 +21,16 @@ func (m *Memory) CreateBlob(ctx context.Context, id string, size int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, b := range m.Blobs {
-		if b.ID == id && b.Size != size {
-			return ErrAlreadyExists
-		} else if b.ID == id {
-			return nil
+		if b.ID != id {
+			continue
 		}
+		if b.Status == Deleting {
+			return ErrConflict
+		}
+		if b.Size != size {
+			return ErrAlreadyExists
+		}
+		return nil
 	}
 	m.Blobs = append(m.Blobs, &BlobInfo{
 		ID:        id,
@@ -51,17 +56,20 @@ func (m *Memory) GetBlob(ctx context.Context, id string) (BlobInfo, error) {
 func (m *Memory) AddReplica(ctx context.Context, blobID, nodeID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, r := range m.Replicas {
-		if blobID == r.BlobID && nodeID == r.NodeID {
-			return nil
-		}
-	}
 	candidateNode := false
 	candidateBlob := false
 	for _, b := range m.Blobs {
 		if b.ID == blobID {
+			if b.Status == Deleting {
+				return ErrConflict
+			}
 			candidateBlob = true
 			break
+		}
+	}
+	for _, r := range m.Replicas {
+		if blobID == r.BlobID && nodeID == r.NodeID {
+			return nil
 		}
 	}
 	for _, n := range m.Nodes {
@@ -87,11 +95,18 @@ func (m *Memory) MarkReplicaCommitted(ctx context.Context, blobID, nodeID string
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, r := range m.Replicas {
-		if r.BlobID == blobID && r.NodeID == nodeID {
-			r.Status = Committed
-			r.UpdatedAt = time.Now().UTC()
-			return nil
+		if r.BlobID != blobID || r.NodeID != nodeID {
+			continue
 		}
+		switch r.Status {
+		case Committed:
+			return nil
+		case Deleting:
+			return ErrConflict
+		}
+		r.Status = Committed
+		r.UpdatedAt = time.Now().UTC()
+		return nil
 	}
 	return ErrNotFound
 }
@@ -100,12 +115,22 @@ func (m *Memory) CommitBlob(ctx context.Context, blobID, hash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, b := range m.Blobs {
-		if blobID == b.ID {
-			b.UpdatedAt = time.Now().UTC()
-			b.Hash = &hash
-			b.Status = Committed
-			return nil
+		if blobID != b.ID {
+			continue
 		}
+		switch b.Status {
+		case Committed:
+			if b.Hash != nil && *b.Hash == hash {
+				return nil
+			}
+			return ErrConflict
+		case Deleting:
+			return ErrConflict
+		}
+		b.UpdatedAt = time.Now().UTC()
+		b.Hash = &hash
+		b.Status = Committed
+		return nil
 	}
 	return ErrNotFound
 }
