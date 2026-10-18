@@ -4,6 +4,7 @@ x-storagenode: &storagenode
   build:
     context: .
     dockerfile: storagenode/Dockerfile
+    network: host
   networks:
     - storage
   restart: unless-stopped
@@ -40,11 +41,20 @@ services:
     build:
       context: .
       dockerfile: gateway/Dockerfile
+      network: host
+    command:
+      - "-env"
+      - "prod"
+      - "-nodes"
+      - "sn1=storagenode-1:8050,sn2=storagenode-2:8050,sn3=storagenode-3:8050"
+    environment:
+      GATEWAY_DSN: "postgres://user:secret@gateway-postgres:5432/gateway?sslmode=disable"
     networks:
       - gateway
       - gateway-metadata
       - storage
     restart: unless-stopped
+    stop_grace_period: 15s
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "8080"]
       interval: 10s
@@ -58,6 +68,12 @@ services:
     depends_on:
       gateway-postgres:
         condition: service_healthy
+      storagenode-1:
+        condition: service_started
+      storagenode-2:
+        condition: service_started
+      storagenode-3:
+        condition: service_started
 
   gateway-postgres:
     image: postgres:16-alpine

@@ -13,5 +13,5 @@ WORKDIR /app
 COPY --from=builder /app/bin/app .
 EXPOSE 8080
 
-CMD ["./app"]
+ENTRYPOINT ["./app"]
 
