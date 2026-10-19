@@ -38,7 +38,7 @@ type Config struct {
 
 func loadConfig(args []string) (Config, error) {
 	fs := flag.NewFlagSet("gateway", flag.ContinueOnError)
-	addr := fs.String("addr", ":8080", "адрес для gRPC")
+	addr := fs.String("addr", ":8090", "адрес для gRPC")
 	nodes := fs.String("nodes", "", "ноды в формате id=addr,id=addr")
 	env := fs.String("env", envDev, "окружение: dev, prod")
 	balancer := fs.String("balancer", balancerLeastConns, "алгоритм балансировки: least-conns, weighted-random")
