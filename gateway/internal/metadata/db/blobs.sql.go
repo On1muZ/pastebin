@@ -204,3 +204,12 @@ func (q *Queries) MarkBlobDeleting(ctx context.Context, id string) (int64, error
 	}
 	return result.RowsAffected(), nil
 }
+
+const setLocalAsyncCommit = `-- name: SetLocalAsyncCommit :exec
+SET LOCAL synchronous_commit = off
+`
+
+func (q *Queries) SetLocalAsyncCommit(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, setLocalAsyncCommit)
+	return err
+}

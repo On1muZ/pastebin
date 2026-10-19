@@ -19,14 +19,11 @@ func (s *Server) GetBlob(req *storagenodev1.GetBlobRequest, stream storagenodev1
 		return status.Error(codes.InvalidArgument, "blob_id is required, offset and length must be >= 0")
 	}
 
-	blob, err := s.store.GetBlob(ctx, req.GetBlobId())
+	replicas, err := s.store.GetCommittedReplicas(ctx, req.GetBlobId())
 	if err != nil {
 		return s.toStatus(err)
 	}
-	if blob.Status != metadata.Committed {
-		return status.Error(codes.NotFound, "blob not found")
-	}
-	r, err := s.openReplica(ctx, req)
+	r, err := s.openReplica(ctx, req, replicas)
 	if err != nil {
 		return err
 	}
@@ -38,14 +35,7 @@ func (s *Server) GetBlob(req *storagenodev1.GetBlobRequest, stream storagenodev1
 	return nil
 }
 
-func (s *Server) openReplica(ctx context.Context, req *storagenodev1.GetBlobRequest) (io.ReadCloser, error) {
-	replicas, err := s.store.GetReplicas(ctx, req.GetBlobId())
-	if err != nil {
-		return nil, s.toStatus(err)
-	}
-	replicas = slices.DeleteFunc(replicas, func(r metadata.ReplicaInfo) bool {
-		return r.Status != metadata.Committed
-	})
+func (s *Server) openReplica(ctx context.Context, req *storagenodev1.GetBlobRequest, replicas []metadata.ReplicaInfo) (io.ReadCloser, error) {
 	slices.SortStableFunc(replicas, func(a, b metadata.ReplicaInfo) int {
 		return s.aliveRank(a.NodeID) - s.aliveRank(b.NodeID)
 	})

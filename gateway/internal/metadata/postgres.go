@@ -20,14 +20,18 @@ func NewPostgres(pool *pgxpool.Pool) Store {
 }
 
 func (p *Postgres) CreateBlob(ctx context.Context, id string, size int64) error {
-	n, err := p.q.CreateBlob(ctx, db.CreateBlobParams{ID: id, Size: size})
+	return createBlob(ctx, p.q, id, size)
+}
+
+func createBlob(ctx context.Context, q *db.Queries, id string, size int64) error {
+	n, err := q.CreateBlob(ctx, db.CreateBlobParams{ID: id, Size: size})
 	if err != nil {
 		return toError(err)
 	}
 	if n > 0 {
 		return nil
 	}
-	blob, err := p.q.GetBlob(ctx, id)
+	blob, err := q.GetBlob(ctx, id)
 	if err != nil {
 		return toError(err)
 	}
@@ -85,14 +89,18 @@ func (p *Postgres) MarkReplicaCommitted(ctx context.Context, blobID, nodeID stri
 }
 
 func (p *Postgres) CommitBlob(ctx context.Context, blobID, hash string) error {
-	n, err := p.q.CommitBlob(ctx, db.CommitBlobParams{Hash: &hash, ID: blobID})
+	return commitBlob(ctx, p.q, blobID, hash)
+}
+
+func commitBlob(ctx context.Context, q *db.Queries, blobID, hash string) error {
+	n, err := q.CommitBlob(ctx, db.CommitBlobParams{Hash: &hash, ID: blobID})
 	if err != nil {
 		return toError(err)
 	}
 	if n > 0 {
 		return nil
 	}
-	blob, err := p.q.GetBlob(ctx, blobID)
+	blob, err := q.GetBlob(ctx, blobID)
 	if err != nil {
 		return toError(err)
 	}
@@ -196,6 +204,81 @@ func (p *Postgres) SyncNodes(ctx context.Context, nodes []*NodeInfo) error {
 		}
 	}
 	return toError(tx.Commit(ctx))
+}
+
+func (p *Postgres) StartUpload(ctx context.Context, id string, size int64, nodeIDs []string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return toError(err)
+	}
+	defer tx.Rollback(ctx)
+	qtx := p.q.WithTx(tx)
+	if err := qtx.SetLocalAsyncCommit(ctx); err != nil {
+		return toError(err)
+	}
+	if err := createBlob(ctx, qtx, id, size); err != nil {
+		return err
+	}
+	n, err := qtx.AddReplicas(ctx, db.AddReplicasParams{BlobID: id, NodeIds: nodeIDs})
+	if err != nil {
+		return toError(err)
+	}
+	if n == 0 && len(nodeIDs) > 0 {
+		blob, err := qtx.GetBlob(ctx, id)
+		if err != nil {
+			return toError(err)
+		}
+		if blob.Status == string(Deleting) {
+			return ErrConflict
+		}
+	}
+	return toError(tx.Commit(ctx))
+}
+
+func (p *Postgres) FinishUpload(ctx context.Context, id, hash string, committed, failed []string) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return toError(err)
+	}
+	defer tx.Rollback(ctx)
+	qtx := p.q.WithTx(tx)
+	if len(failed) > 0 {
+		if err := qtx.DeletePendingReplicas(ctx, db.DeletePendingReplicasParams{BlobID: id, NodeIds: failed}); err != nil {
+			return toError(err)
+		}
+	}
+	if err := qtx.CommitReplicas(ctx, db.CommitReplicasParams{BlobID: id, NodeIds: committed}); err != nil {
+		return toError(err)
+	}
+	if err := commitBlob(ctx, qtx, id, hash); err != nil {
+		return err
+	}
+	return toError(tx.Commit(ctx))
+}
+
+func (p *Postgres) DropPendingReplicas(ctx context.Context, blobID string, nodeIDs []string) error {
+	return toError(p.q.DeletePendingReplicas(ctx, db.DeletePendingReplicasParams{BlobID: blobID, NodeIds: nodeIDs}))
+}
+
+func (p *Postgres) GetCommittedReplicas(ctx context.Context, blobID string) ([]ReplicaInfo, error) {
+	rows, err := p.q.GetCommittedReplicas(ctx, blobID)
+	if err != nil {
+		return nil, toError(err)
+	}
+	if len(rows) == 0 {
+		blob, err := p.q.GetBlob(ctx, blobID)
+		if err != nil {
+			return nil, toError(err)
+		}
+		if blob.Status != string(Committed) {
+			return nil, ErrNotFound
+		}
+	}
+	replicasInfo := make([]ReplicaInfo, 0, len(rows))
+	for _, r := range rows {
+		replicasInfo = append(replicasInfo, toReplicaInfo(r.Replica))
+	}
+	return replicasInfo, nil
 }
 
 func toError(err error) error {

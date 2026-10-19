@@ -53,4 +53,8 @@ type Store interface {
 	ListDeleting(ctx context.Context, limit int) ([]BlobInfo, error)
 	ListUnderReplicated(ctx context.Context, limit, want int) ([]BlobInfo, error)
 	SyncNodes(ctx context.Context, nodes []*NodeInfo) error
+	StartUpload(ctx context.Context, id string, size int64, nodeIDs []string) error
+	FinishUpload(ctx context.Context, id, hash string, committed, failed []string) error
+	DropPendingReplicas(ctx context.Context, blobID string, nodeIDs []string) error
+	GetCommittedReplicas(ctx context.Context, blobID string) ([]ReplicaInfo, error)
 }

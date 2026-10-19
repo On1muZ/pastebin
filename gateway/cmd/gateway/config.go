@@ -47,7 +47,7 @@ func loadConfig(args []string) (Config, error) {
 	replicateInterval := fs.Duration("replicate-interval", 30*time.Second, "интервал replicate worker")
 	maxBlobSize := fs.Int64("max-blob-size", 10<<20, "максимальный размер blob в байтах")
 	shutdownTimeout := fs.Duration("shutdown-timeout", 10*time.Second, "сколько ждать завершения запросов при остановке")
-	dbMaxConns := fs.Int("db-max-conns", 20, "максимум соединений с postgres")
+	dbMaxConns := fs.Int("db-max-conns", 50, "максимум соединений с postgres")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
 	}

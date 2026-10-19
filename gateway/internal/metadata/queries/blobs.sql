@@ -67,3 +67,6 @@ ORDER BY
   b.updated_at
 LIMIT
   sqlc.arg(lim);
+
+-- name: SetLocalAsyncCommit :exec
+SET LOCAL synchronous_commit = off;

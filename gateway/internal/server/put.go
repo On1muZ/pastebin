@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"pastebin/gateway/internal/balancer"
-	"pastebin/gateway/internal/metadata"
 	"pastebin/gateway/internal/nodeio"
 	"pastebin/gateway/internal/nodepool"
 	storagenodev1 "pastebin/gen/go/storagenode/v1"
@@ -36,34 +35,38 @@ func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 	}
 	id, size := hdr.GetBlobId(), hdr.GetSizeBytes()
 
-	if err := s.store.CreateBlob(stream.Context(), id, size); err != nil {
-		return s.toStatus(err)
-	}
 	nodes, err := s.pickNodes(size)
 	if err != nil {
 		return err
 	}
+	if err := s.store.StartUpload(stream.Context(), id, size, nodeIDs(nodes)); err != nil {
+		return s.toStatus(err)
+	}
 
 	ctx, cancel := context.WithTimeout(stream.Context(), writeTimeout)
 	defer cancel()
-	f := s.startUploads(ctx, id, size, nodes)
+	f, failed := s.startUploads(ctx, id, size, nodes)
 	if len(f.uploads) == 0 {
+		s.dropReplicas(stream.Context(), id, failed)
 		return status.Error(codes.Unavailable, "could not start upload on any node")
 	}
 
 	sha, pumpErr := s.pump(stream, size, f)
-	committed := s.settle(stream.Context(), id, sha, f.uploads)
+	committed, dropped := s.settle(id, sha, size, f.uploads)
+	failed = append(failed, dropped...)
 	if pumpErr != nil {
+		s.dropReplicas(stream.Context(), id, failed)
 		return pumpErr
 	}
-	if committed == 0 {
+	if len(committed) == 0 {
+		s.dropReplicas(stream.Context(), id, failed)
 		s.log.Error("all picked nodes could not write file", slog.String("blob_id", id))
 		return status.Error(codes.Unavailable, "could not write blob to any node")
 	}
 
 	mctx, mcancel := metadataContext(stream.Context())
 	defer mcancel()
-	if err := s.store.CommitBlob(mctx, id, sha); err != nil {
+	if err := s.store.FinishUpload(mctx, id, sha, committed, failed); err != nil {
 		return s.toStatus(err)
 	}
 	return stream.SendAndClose(&storagenodev1.PutBlobResponse{
@@ -163,17 +166,22 @@ func (f *fanout) finish(err error) {
 	f.wg.Wait()
 }
 
-func (s *Server) startUploads(ctx context.Context, id string, size int64, nodes []*nodepool.Node) *fanout {
-	f := &fanout{}
+func nodeIDs(nodes []*nodepool.Node) []string {
+	ids := make([]string, 0, len(nodes))
 	for _, node := range nodes {
-		if err := s.store.AddReplica(ctx, id, node.ID); err != nil {
-			s.log.Error("could not add replica", slog.String("error", err.Error()), slog.String("node_id", node.ID), slog.String("blob_id", id))
-			continue
-		}
+		ids = append(ids, node.ID)
+	}
+	return ids
+}
+
+func (s *Server) startUploads(ctx context.Context, id string, size int64, nodes []*nodepool.Node) (*fanout, []string) {
+	f := &fanout{}
+	var failed []string
+	for _, node := range nodes {
 		client, err := s.transport.Client(node)
 		if err != nil {
 			s.log.Error("could not open client", slog.String("error", err.Error()), slog.String("node_id", node.ID), slog.String("blob_id", id))
-			s.dropReplica(ctx, id, node.ID)
+			failed = append(failed, node.ID)
 			continue
 		}
 		pr, pw := io.Pipe()
@@ -186,7 +194,7 @@ func (s *Server) startUploads(ctx context.Context, id string, size int64, nodes 
 			}
 		})
 	}
-	return f
+	return f, failed
 }
 
 func (s *Server) pump(stream storagenodev1.StorageNode_PutBlobServer, size int64, f *fanout) (string, error) {
@@ -208,30 +216,24 @@ func (s *Server) pump(stream storagenodev1.StorageNode_PutBlobServer, size int64
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func (s *Server) settle(ctx context.Context, id, sha string, uploads []*upload) int {
-	ctx, cancel := metadataContext(ctx)
-	defer cancel()
-	committed := 0
+func (s *Server) settle(id, sha string, size int64, uploads []*upload) (committed, failed []string) {
 	for _, u := range uploads {
 		switch {
 		case sha == "":
-			s.dropReplica(ctx, id, u.node.ID)
+			failed = append(failed, u.node.ID)
 		case u.err == nil && u.sha == sha:
-			if err := s.store.MarkReplicaCommitted(ctx, id, u.node.ID); err != nil {
-				s.log.Error("could not commit replica", slog.String("error", err.Error()), slog.String("node_id", u.node.ID), slog.String("blob_id", id))
-				continue
-			}
-			committed++
+			u.node.DeleteFreeSpace(size)
+			committed = append(committed, u.node.ID)
 		case u.err == nil:
 			s.log.Error("sha256 mismatch", slog.String("node_id", u.node.ID), slog.String("blob_id", id), slog.String("node_sha256", u.sha), slog.String("gateway_sha256", sha))
 		case isUnknownOutcome(u.err):
 			s.log.Warn("unknown write outcome", slog.String("error", u.err.Error()), slog.String("node_id", u.node.ID), slog.String("blob_id", id))
 		default:
 			s.log.Warn("node could not write file", slog.String("error", u.err.Error()), slog.String("node_id", u.node.ID), slog.String("blob_id", id))
-			s.dropReplica(ctx, id, u.node.ID)
+			failed = append(failed, u.node.ID)
 		}
 	}
-	return committed
+	return committed, failed
 }
 
 func isUnknownOutcome(err error) bool {
@@ -242,9 +244,14 @@ func isUnknownOutcome(err error) bool {
 	return false
 }
 
-func (s *Server) dropReplica(ctx context.Context, id, nodeID string) {
-	if err := s.store.DeleteReplica(ctx, id, nodeID); err != nil && !errors.Is(err, metadata.ErrNotFound) {
-		s.log.Error("could not delete replica", slog.String("error", err.Error()), slog.String("node_id", nodeID), slog.String("blob_id", id))
+func (s *Server) dropReplicas(ctx context.Context, id string, nodeIDs []string) {
+	if len(nodeIDs) == 0 {
+		return
+	}
+	ctx, cancel := metadataContext(ctx)
+	defer cancel()
+	if err := s.store.DropPendingReplicas(ctx, id, nodeIDs); err != nil {
+		s.log.Error("could not delete replicas", slog.String("error", err.Error()), slog.Any("node_ids", nodeIDs), slog.String("blob_id", id))
 	}
 }
 

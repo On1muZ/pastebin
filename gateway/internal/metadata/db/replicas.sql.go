@@ -36,6 +36,34 @@ func (q *Queries) AddReplica(ctx context.Context, arg AddReplicaParams) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const addReplicas = `-- name: AddReplicas :execrows
+INSERT INTO
+  replicas (blob_id, node_id)
+SELECT
+  b.id,
+  n.node_id
+FROM
+  blobs AS b
+  CROSS JOIN unnest($1::text[]) AS n (node_id)
+WHERE
+  b.id = $2
+  AND b.status <> 'deleting'
+ON CONFLICT DO NOTHING
+`
+
+type AddReplicasParams struct {
+	NodeIds []string
+	BlobID  string
+}
+
+func (q *Queries) AddReplicas(ctx context.Context, arg AddReplicasParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addReplicas, arg.NodeIds, arg.BlobID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const commitReplica = `-- name: CommitReplica :execrows
 UPDATE replicas
 SET
@@ -60,6 +88,45 @@ func (q *Queries) CommitReplica(ctx context.Context, arg CommitReplicaParams) (i
 	return result.RowsAffected(), nil
 }
 
+const commitReplicas = `-- name: CommitReplicas :exec
+UPDATE replicas
+SET
+  status = 'committed',
+  updated_at = now()
+WHERE
+  blob_id = $1
+  AND node_id = ANY ($2::text[])
+  AND status = 'pending'
+`
+
+type CommitReplicasParams struct {
+	BlobID  string
+	NodeIds []string
+}
+
+func (q *Queries) CommitReplicas(ctx context.Context, arg CommitReplicasParams) error {
+	_, err := q.db.Exec(ctx, commitReplicas, arg.BlobID, arg.NodeIds)
+	return err
+}
+
+const deletePendingReplicas = `-- name: DeletePendingReplicas :exec
+DELETE FROM replicas
+WHERE
+  blob_id = $1
+  AND node_id = ANY ($2::text[])
+  AND status = 'pending'
+`
+
+type DeletePendingReplicasParams struct {
+	BlobID  string
+	NodeIds []string
+}
+
+func (q *Queries) DeletePendingReplicas(ctx context.Context, arg DeletePendingReplicasParams) error {
+	_, err := q.db.Exec(ctx, deletePendingReplicas, arg.BlobID, arg.NodeIds)
+	return err
+}
+
 const deleteReplica = `-- name: DeleteReplica :execrows
 DELETE FROM replicas
 WHERE
@@ -78,6 +145,48 @@ func (q *Queries) DeleteReplica(ctx context.Context, arg DeleteReplicaParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getCommittedReplicas = `-- name: GetCommittedReplicas :many
+SELECT
+  r.blob_id, r.node_id, r.status, r.created_at, r.updated_at
+FROM
+  replicas AS r
+  JOIN blobs AS b ON b.id = r.blob_id
+WHERE
+  r.blob_id = $1
+  AND b.status = 'committed'
+  AND r.status = 'committed'
+`
+
+type GetCommittedReplicasRow struct {
+	Replica Replica
+}
+
+func (q *Queries) GetCommittedReplicas(ctx context.Context, blobID string) ([]GetCommittedReplicasRow, error) {
+	rows, err := q.db.Query(ctx, getCommittedReplicas, blobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetCommittedReplicasRow
+	for rows.Next() {
+		var i GetCommittedReplicasRow
+		if err := rows.Scan(
+			&i.Replica.BlobID,
+			&i.Replica.NodeID,
+			&i.Replica.Status,
+			&i.Replica.CreatedAt,
+			&i.Replica.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getReplica = `-- name: GetReplica :one

@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 )
@@ -291,4 +292,59 @@ func (m *Memory) SyncNodes(ctx context.Context, nodes []*NodeInfo) error {
 		}
 	}
 	return nil
+}
+
+func (m *Memory) StartUpload(ctx context.Context, id string, size int64, nodeIDs []string) error {
+	if err := m.CreateBlob(ctx, id, size); err != nil {
+		return err
+	}
+	for _, nodeID := range nodeIDs {
+		if err := m.AddReplica(ctx, id, nodeID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Memory) FinishUpload(ctx context.Context, id, hash string, committed, failed []string) error {
+	if err := m.DropPendingReplicas(ctx, id, failed); err != nil {
+		return err
+	}
+	for _, nodeID := range committed {
+		if err := m.MarkReplicaCommitted(ctx, id, nodeID); err != nil {
+			return err
+		}
+	}
+	return m.CommitBlob(ctx, id, hash)
+}
+
+func (m *Memory) DropPendingReplicas(ctx context.Context, blobID string, nodeIDs []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.Replicas[:0]
+	for _, r := range m.Replicas {
+		if r.BlobID == blobID && r.Status == Pending && slices.Contains(nodeIDs, r.NodeID) {
+			continue
+		}
+		kept = append(kept, r)
+	}
+	m.Replicas = kept
+	return nil
+}
+
+func (m *Memory) GetCommittedReplicas(ctx context.Context, blobID string) ([]ReplicaInfo, error) {
+	blob, err := m.GetBlob(ctx, blobID)
+	if err != nil {
+		return nil, err
+	}
+	if blob.Status != Committed {
+		return nil, ErrNotFound
+	}
+	replicas, err := m.GetReplicas(ctx, blobID)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(replicas, func(r ReplicaInfo) bool {
+		return r.Status != Committed
+	}), nil
 }

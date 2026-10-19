@@ -160,6 +160,7 @@ func (r *ReplicateWorker) copyToNode(ctx context.Context, blobInfo metadata.Blob
 			r.log.Error("replicate worker got wrong sha256 after copy", slog.String("node_id", src.ID), slog.String("blob_id", blobInfo.ID), slog.String("sha256", sha))
 			continue
 		}
+		nodeToWrite.DeleteFreeSpace(blobInfo.Size)
 		if err := r.store.MarkReplicaCommitted(ctx, blobInfo.ID, nodeToWrite.ID); err != nil {
 			r.log.Error("replicate worker could not commit replica in store", slog.String("error", err.Error()), slog.String("node_id", nodeToWrite.ID), slog.String("blob_id", blobInfo.ID))
 			return false

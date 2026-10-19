@@ -7,6 +7,7 @@ import (
 	"os"
 	"pastebin/gateway/internal/nodepool"
 	storagenodev1 "pastebin/gen/go/storagenode/v1"
+	"slices"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -84,7 +85,8 @@ func (t *Transport) Client(node *nodepool.Node) (storagenodev1.StorageNodeClient
 		return nc.client, nil
 	}
 	defer t.mu.Unlock()
-	conn, err := grpc.NewClient(node.Addr, t.dialOpts...)
+	dialOpts := append(slices.Clip(t.dialOpts), grpc.WithStatsHandler(&connCounter{node: node}))
+	conn, err := grpc.NewClient(node.Addr, dialOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("could not open new connection to this client: %w: %w", ErrCouldNotOpenConn, err)
 	}
