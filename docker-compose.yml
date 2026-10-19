@@ -16,6 +16,54 @@ x-storagenode: &storagenode
     start_period: 5s
 
 services:
+  pastebin:
+    build:
+      context: .
+      dockerfile: pastebin/Dockerfile
+      network: host
+    command:
+      - "-addr"
+      - ":8080"
+    environment:
+      PASTEBIN_DSN: "postgres://user:secret@pastebin-postgres:5432/pastebin?sslmode=disable"
+    networks:
+      - gateway
+      - pastebin-metadata
+    restart: unless-stopped
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    ports:
+      - "8080:8080"
+    depends_on:
+      pastebin-postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+  pastebin-postgres:
+    image: postgres:16-alpine
+    command: ["postgres", "-c", "max_connections=200"]
+    networks:
+      - pastebin-metadata
+    environment:
+      POSTGRES_USER: "user"
+      POSTGRES_PASSWORD: "secret"
+      POSTGRES_DB: "pastebin"
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pastebin-postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   storagenode-1:
     <<: *storagenode
     ports:
@@ -56,7 +104,7 @@ services:
     restart: unless-stopped
     stop_grace_period: 15s
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      test: ["CMD", "nc", "-z", "localhost", "8090"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -64,7 +112,7 @@ services:
     volumes:
       - gateway-data:/data
     ports:
-      - "8080:8080"
+      - "8090:8090"
     depends_on:
       gateway-postgres:
         condition: service_healthy
@@ -96,6 +144,11 @@ services:
       retries: 5
 
 networks:
+  pastebin-metadata:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.151.9.0/24
   gateway:
     driver: bridge
     ipam:
@@ -118,3 +171,4 @@ volumes:
   storagenode-3-data:
   gateway-data:
   gateway-postgres:
+  pastebin-postgres:
