@@ -1,0 +1,19 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: internal/metadata/migrations
+    queries: internal/metadata/queries
+    gen:
+      go:
+        package: db
+        out: internal/metadata/db
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: timestamptz
+            go_type: time.Time
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              type: time.Time
+              pointer: true
