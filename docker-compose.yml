@@ -77,7 +77,7 @@ services:
         "--maxmemory",
         "1024mb",
         "--maxmemory-policy",
-        "noeviction",
+        "volatile-lfu",
       ]
     networks:
       - pastebin-cache
