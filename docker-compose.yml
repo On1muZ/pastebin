@@ -25,10 +25,12 @@ services:
       - "-addr"
       - ":8080"
     environment:
-      PASTEBIN_DSN: "postgres://user:secret@pastebin-postgres:5432/pastebin?sslmode=disable"
+      PASTEBIN_POSTGRES_DSN: "postgres://user:secret@pastebin-postgres:5432/pastebin?sslmode=disable"
+      PASTEBIN_REDIS_ADDR: "pastebin-redis:6379"
     networks:
       - gateway
       - pastebin-metadata
+      - pastebin-cache
     restart: unless-stopped
     stop_grace_period: 15s
     healthcheck:
@@ -43,6 +45,8 @@ services:
       pastebin-postgres:
         condition: service_healthy
       gateway:
+        condition: service_healthy
+      pastebin-redis:
         condition: service_healthy
   pastebin-postgres:
     image: postgres:16-alpine
@@ -60,6 +64,29 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+  pastebin-redis:
+    image: redis:7-alpine
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "1024mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
+    networks:
+      - pastebin-cache
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes: [pastebin-redis:/data]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -164,6 +191,11 @@ networks:
     ipam:
       config:
         - subnet: 10.151.12.0/24
+  pastebin-cache:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.151.13.0/24
 
 volumes:
   storagenode-1-data:
@@ -172,3 +204,4 @@ volumes:
   gateway-data:
   gateway-postgres:
   pastebin-postgres:
+  pastebin-redis:
