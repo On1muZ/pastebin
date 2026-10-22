@@ -21,6 +21,7 @@ import (
 const (
 	writeTimeout    = 4 * time.Second
 	metadataTimeout = 2 * time.Second
+	maxBlobSize     = 512 << 10
 )
 
 var (
@@ -34,6 +35,9 @@ func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 		return err
 	}
 	id, size := hdr.GetBlobId(), hdr.GetSizeBytes()
+	if size > maxBlobSize {
+		return status.Error(codes.InvalidArgument, "blob size could not be greater then 512 KiB")
+	}
 
 	nodes, err := s.pickNodes(size)
 	if err != nil {
