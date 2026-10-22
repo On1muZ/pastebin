@@ -9,15 +9,22 @@ import (
 	"pastebin/pastebin/internal/paste"
 )
 
+const (
+	jsonEscapeFactor = 6
+	jsonOverhead     = 1 << 10
+)
+
 type Handler struct {
-	pastes *paste.Paste
-	log    *slog.Logger
+	pastes      *paste.Paste
+	log         *slog.Logger
+	maxBodySize int64
 }
 
-func NewHandler(pastes *paste.Paste, log *slog.Logger) *Handler {
+func NewHandler(pastes *paste.Paste, log *slog.Logger, maxPasteSize int64) *Handler {
 	return &Handler{
-		pastes: pastes,
-		log:    log,
+		pastes:      pastes,
+		log:         log,
+		maxBodySize: maxPasteSize*jsonEscapeFactor + jsonOverhead,
 	}
 }
 

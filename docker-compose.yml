@@ -24,8 +24,22 @@ services:
     command:
       - "-addr"
       - ":8080"
+      - "-env"
+      - "${ENV}"
+      - "-flush-interval"
+      - "${PASTEBIN_FLUSH_INTERVAL}"
+      - "-delete-interval"
+      - "${PASTEBIN_DELETE_INTERVAL}"
+      - "-shutdown-timeout"
+      - "${PASTEBIN_SHUTDOWN_TIMEOUT}"
+      - "-db-max-conns"
+      - "${PASTEBIN_DB_MAX_CONNS}"
+      - "-max-paste-size"
+      - "${MAX_BLOB_SIZE}"
+      - "-paste-cache-ttl"
+      - "${PASTEBIN_PASTE_CACHE_TTL}"
     environment:
-      PASTEBIN_POSTGRES_DSN: "postgres://user:secret@pastebin-postgres:5432/pastebin?sslmode=disable"
+      PASTEBIN_POSTGRES_DSN: "postgres://${PASTEBIN_DB_USER}:${PASTEBIN_DB_PASSWORD}@pastebin-postgres:5432/${PASTEBIN_DB_NAME}?sslmode=disable"
       PASTEBIN_REDIS_ADDR: "pastebin-redis:6379"
     networks:
       - gateway
@@ -48,15 +62,16 @@ services:
         condition: service_healthy
       pastebin-redis:
         condition: service_healthy
+
   pastebin-postgres:
     image: postgres:16-alpine
-    command: ["postgres", "-c", "max_connections=200"]
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNS}"]
     networks:
       - pastebin-metadata
     environment:
-      POSTGRES_USER: "user"
-      POSTGRES_PASSWORD: "secret"
-      POSTGRES_DB: "pastebin"
+      POSTGRES_USER: "${PASTEBIN_DB_USER}"
+      POSTGRES_PASSWORD: "${PASTEBIN_DB_PASSWORD:?PASTEBIN_DB_PASSWORD is not set}"
+      POSTGRES_DB: "${PASTEBIN_DB_NAME}"
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
@@ -75,7 +90,7 @@ services:
         "--appendonly",
         "yes",
         "--maxmemory",
-        "1024mb",
+        "${REDIS_MAX_MEMORY}",
         "--maxmemory-policy",
         "volatile-lfu",
       ]
@@ -119,11 +134,19 @@ services:
       network: host
     command:
       - "-env"
-      - "prod"
+      - "${ENV}"
       - "-nodes"
       - "sn1=storagenode-1:8050,sn2=storagenode-2:8050,sn3=storagenode-3:8050"
+      - "-db-max-conns"
+      - "${GATEWAY_DB_MAX_CONNS}"
+      - "-max-blob-size"
+      - "${MAX_BLOB_SIZE}"
+      - "-write-timeout"
+      - "${GATEWAY_WRITE_TIMEOUT}"
+      - "-check-timeout"
+      - "${GATEWAY_CHECK_TIMEOUT}"
     environment:
-      GATEWAY_DSN: "postgres://user:secret@gateway-postgres:5432/gateway?sslmode=disable"
+      GATEWAY_DSN: "postgres://${GATEWAY_DB_USER}:${GATEWAY_DB_PASSWORD}@gateway-postgres:5432/${GATEWAY_DB_NAME}?sslmode=disable"
     networks:
       - gateway
       - gateway-metadata
@@ -152,13 +175,13 @@ services:
 
   gateway-postgres:
     image: postgres:16-alpine
-    command: ["postgres", "-c", "max_connections=200"]
+    command: ["postgres", "-c", "max_connections=${POSTGRES_MAX_CONNS}"]
     networks:
       - gateway-metadata
     environment:
-      POSTGRES_USER: "user"
-      POSTGRES_PASSWORD: "secret"
-      POSTGRES_DB: "gateway"
+      POSTGRES_USER: "${GATEWAY_DB_USER}"
+      POSTGRES_PASSWORD: "${GATEWAY_DB_PASSWORD:?GATEWAY_DB_PASSWORD is not set}"
+      POSTGRES_DB: "${GATEWAY_DB_NAME}"
     ports:
       - "127.0.0.1:5432:5432"
     volumes:

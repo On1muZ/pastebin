@@ -18,11 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const (
-	writeTimeout    = 4 * time.Second
-	metadataTimeout = 2 * time.Second
-	maxBlobSize     = 512 << 10
-)
+const metadataTimeout = 2 * time.Second
 
 var (
 	errAllUploadsFailed = errors.New("all uploads failed")
@@ -35,8 +31,8 @@ func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 		return err
 	}
 	id, size := hdr.GetBlobId(), hdr.GetSizeBytes()
-	if size > maxBlobSize {
-		return status.Error(codes.InvalidArgument, "blob size could not be greater then 512 KiB")
+	if size > s.cfg.MaxBlobSize {
+		return status.Errorf(codes.InvalidArgument, "blob size %d is greater than max %d bytes", size, s.cfg.MaxBlobSize)
 	}
 
 	nodes, err := s.pickNodes(size)
@@ -47,7 +43,7 @@ func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 		return s.toStatus(err)
 	}
 
-	ctx, cancel := context.WithTimeout(stream.Context(), writeTimeout)
+	ctx, cancel := context.WithTimeout(stream.Context(), s.cfg.WriteTimeout)
 	defer cancel()
 	f, failed := s.startUploads(ctx, id, size, nodes)
 	if len(f.uploads) == 0 {

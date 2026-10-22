@@ -100,7 +100,7 @@ func run(cfg Config, log *slog.Logger) error {
 	defer tr.Close()
 	log.Info("transport was successfully initialized")
 
-	chk := checker.New(pool, tr, log)
+	chk := checker.New(pool, tr, log, cfg.CheckTimeout)
 	log.Info("checker was successfully initialized")
 
 	chk.CheckOnce(ctx)
@@ -125,7 +125,10 @@ func run(cfg Config, log *slog.Logger) error {
 		return fmt.Errorf("listen %s: %w", cfg.Addr, err)
 	}
 	grpcServer := grpc.NewServer()
-	storagenodev1.RegisterStorageNodeServer(grpcServer, server.New(log, bal, pool, tr, store))
+	storagenodev1.RegisterStorageNodeServer(grpcServer, server.New(log, bal, pool, tr, store, server.Config{
+		MaxBlobSize:  cfg.MaxBlobSize,
+		WriteTimeout: cfg.WriteTimeout,
+	}))
 	reflection.Register(grpcServer)
 
 	stopped := make(chan struct{})

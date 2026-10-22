@@ -15,28 +15,29 @@ import (
 	"time"
 )
 
-const maxPasteSize = 512 << 10
-const pasteTTL = 3600 * time.Second
-
 var ErrIncorrectHash = errors.New("incorrect hash sum")
 var ErrPasteIsEmpty = errors.New("paste is empty")
 var ErrPasteSizeTooBig = errors.New("paste size too big")
 
 type Paste struct {
-	store   metadata.Store
-	cache   cache.PasteCache
-	counter views.Counter
-	client  blobs.Store
-	log     *slog.Logger
+	store        metadata.Store
+	cache        cache.PasteCache
+	counter      views.Counter
+	client       blobs.Store
+	log          *slog.Logger
+	cacheTTL     time.Duration
+	maxPasteSize int64
 }
 
-func New(store metadata.Store, cache cache.PasteCache, counter views.Counter, client blobs.Store, log *slog.Logger) *Paste {
+func New(store metadata.Store, cache cache.PasteCache, counter views.Counter, client blobs.Store, log *slog.Logger, cacheTTL time.Duration, maxPasteSize int64) *Paste {
 	return &Paste{
-		store:   store,
-		cache:   cache,
-		counter: counter,
-		client:  client,
-		log:     log,
+		store:        store,
+		cache:        cache,
+		counter:      counter,
+		client:       client,
+		log:          log,
+		cacheTTL:     cacheTTL,
+		maxPasteSize: maxPasteSize,
 	}
 }
 
@@ -44,7 +45,7 @@ func (p *Paste) Create(ctx context.Context, paste []byte, deleteAfterView bool, 
 	if len(paste) == 0 {
 		return nil, ErrPasteIsEmpty
 	}
-	if len(paste) > maxPasteSize {
+	if int64(len(paste)) > p.maxPasteSize {
 		return nil, ErrPasteSizeTooBig
 	}
 	sum := sha256.Sum256(paste)
@@ -106,7 +107,7 @@ func (p *Paste) View(ctx context.Context, addr string) (*metadata.PasteInfo, []b
 		if err != nil {
 			return nil, nil, err
 		}
-		ttl := pasteTTL
+		ttl := p.cacheTTL
 		if pasteInfo.DeleteAt != nil {
 			ttl = min(ttl, time.Until(*pasteInfo.DeleteAt))
 		}

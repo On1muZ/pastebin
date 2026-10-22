@@ -22,6 +22,8 @@ type Config struct {
 	FlushInterval   time.Duration
 	DeleteInterval  time.Duration
 	ShutdownTimeout time.Duration
+	PasteCacheTTL   time.Duration
+	MaxPasteSize    int64
 	DBMaxConns      int32
 }
 
@@ -33,6 +35,8 @@ func loadConfig(args []string) (Config, error) {
 	flushInterval := fs.Duration("flush-interval", 5*time.Second, "интервал flush worker")
 	deleteInterval := fs.Duration("delete-interval", 10*time.Second, "интервал delete worker")
 	shutdownTimeout := fs.Duration("shutdown-timeout", 10*time.Second, "сколько ждать завершения запросов при остановке")
+	pasteCacheTTL := fs.Duration("paste-cache-ttl", time.Hour, "время жизни пасты в кэше")
+	maxPasteSize := fs.Int64("max-paste-size", 512<<10, "максимальный размер пасты")
 	dbMaxConns := fs.Int("db-max-conns", 50, "максимум соединений с postgres")
 	if err := fs.Parse(args); err != nil {
 		return Config{}, err
@@ -47,6 +51,8 @@ func loadConfig(args []string) (Config, error) {
 		FlushInterval:   *flushInterval,
 		DeleteInterval:  *deleteInterval,
 		ShutdownTimeout: *shutdownTimeout,
+		PasteCacheTTL:   *pasteCacheTTL,
+		MaxPasteSize:    *maxPasteSize,
 		DBMaxConns:      int32(*dbMaxConns),
 	}
 
@@ -67,6 +73,12 @@ func loadConfig(args []string) (Config, error) {
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return Config{}, errors.New("shutdown-timeout must be positive")
+	}
+	if cfg.PasteCacheTTL <= 0 {
+		return Config{}, errors.New("paste-cache-ttl must be positive")
+	}
+	if cfg.MaxPasteSize <= 0 {
+		return Config{}, errors.New("max-paste-size must be positive")
 	}
 	if *dbMaxConns <= 0 || *dbMaxConns > 1000 {
 		return Config{}, errors.New("db-max-conns must be in 1..1000")

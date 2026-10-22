@@ -96,8 +96,8 @@ func run(cfg Config, log *slog.Logger) error {
 	blobStore := blobs.NewGateway(storagenodev1.NewStorageNodeClient(conn))
 	pasteCache := cache.NewRedis(redisClient)
 	counter := views.NewRedis(redisClient)
-	pastes := paste.New(store, pasteCache, counter, blobStore, log)
-	handler := httpapi.NewHandler(pastes, log)
+	pastes := paste.New(store, pasteCache, counter, blobStore, log, cfg.PasteCacheTTL, cfg.MaxPasteSize)
+	handler := httpapi.NewHandler(pastes, log, cfg.MaxPasteSize)
 
 	var wg sync.WaitGroup
 	flushWorker := workers.NewFlushWorker(store, counter, log, flushOnceTimeout, finalFlushTimeout)

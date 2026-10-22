@@ -15,13 +15,15 @@ type Checker struct {
 	pool      *nodepool.Pool
 	transport *transport.Transport
 	log       *slog.Logger
+	timeout   time.Duration
 }
 
-func New(pool *nodepool.Pool, transport *transport.Transport, log *slog.Logger) *Checker {
+func New(pool *nodepool.Pool, transport *transport.Transport, log *slog.Logger, timeout time.Duration) *Checker {
 	return &Checker{
 		pool:      pool,
 		transport: transport,
 		log:       log,
+		timeout:   timeout,
 	}
 }
 
@@ -29,7 +31,7 @@ func (c *Checker) CheckOnce(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, node := range c.pool.GetAllNodes() {
 		wg.Go(func() {
-			timeoutCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
 			defer cancel()
 			status, err := c.checkNode(timeoutCtx, node)
 			if err != nil {

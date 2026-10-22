@@ -9,10 +9,16 @@ import (
 	"pastebin/gateway/internal/nodepool"
 	"pastebin/gateway/internal/transport"
 	storagenodev1 "pastebin/gen/go/storagenode/v1"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type Config struct {
+	MaxBlobSize  int64
+	WriteTimeout time.Duration
+}
 
 type Server struct {
 	storagenodev1.UnimplementedStorageNodeServer
@@ -21,17 +27,19 @@ type Server struct {
 	pool      *nodepool.Pool
 	transport *transport.Transport
 	store     metadata.Store
+	cfg       Config
 }
 
 const chunkSize = 256 << 10
 
-func New(log *slog.Logger, balancer *balancer.Balancer, pool *nodepool.Pool, transport *transport.Transport, store metadata.Store) *Server {
+func New(log *slog.Logger, balancer *balancer.Balancer, pool *nodepool.Pool, transport *transport.Transport, store metadata.Store, cfg Config) *Server {
 	return &Server{
 		log:       log,
 		balancer:  balancer,
 		pool:      pool,
 		transport: transport,
 		store:     store,
+		cfg:       cfg,
 	}
 }
 

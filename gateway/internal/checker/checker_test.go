@@ -122,7 +122,7 @@ func newClusterWithLogger(t *testing.T, log *slog.Logger, fakes map[string]*fake
 	)
 	t.Cleanup(func() { tr.Close() })
 
-	c.checker = New(pool, tr, log)
+	c.checker = New(pool, tr, log, 5*time.Second)
 	return c
 }
 

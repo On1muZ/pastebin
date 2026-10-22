@@ -31,6 +31,9 @@ type Config struct {
 	CheckInterval     time.Duration
 	DeleteInterval    time.Duration
 	ReplicateInterval time.Duration
+	CheckTimeout      time.Duration
+	WriteTimeout      time.Duration
+	MaxBlobSize       int64
 	ShutdownTimeout   time.Duration
 	DBMaxConns        int32
 }
@@ -44,6 +47,9 @@ func loadConfig(args []string) (Config, error) {
 	checkInterval := fs.Duration("check-interval", 5*time.Second, "интервал проверки нод")
 	deleteInterval := fs.Duration("delete-interval", 10*time.Second, "интервал delete worker")
 	replicateInterval := fs.Duration("replicate-interval", 30*time.Second, "интервал replicate worker")
+	checkTimeout := fs.Duration("check-timeout", 5*time.Second, "таймаут проверки одной ноды")
+	writeTimeout := fs.Duration("write-timeout", 4*time.Second, "таймаут записи blob на ноды")
+	maxBlobSize := fs.Int64("max-blob-size", 512<<10, "максимальный размер blob в байтах")
 	shutdownTimeout := fs.Duration("shutdown-timeout", 10*time.Second, "сколько ждать завершения запросов при остановке")
 	dbMaxConns := fs.Int("db-max-conns", 50, "максимум соединений с postgres")
 	if err := fs.Parse(args); err != nil {
@@ -58,6 +64,9 @@ func loadConfig(args []string) (Config, error) {
 		CheckInterval:     *checkInterval,
 		DeleteInterval:    *deleteInterval,
 		ReplicateInterval: *replicateInterval,
+		CheckTimeout:      *checkTimeout,
+		WriteTimeout:      *writeTimeout,
+		MaxBlobSize:       *maxBlobSize,
 		ShutdownTimeout:   *shutdownTimeout,
 		DBMaxConns:        int32(*dbMaxConns),
 	}
@@ -77,6 +86,12 @@ func loadConfig(args []string) (Config, error) {
 	}
 	if cfg.CheckInterval <= 0 || cfg.DeleteInterval <= 0 || cfg.ReplicateInterval <= 0 {
 		return Config{}, errors.New("intervals must be positive")
+	}
+	if cfg.CheckTimeout <= 0 || cfg.WriteTimeout <= 0 {
+		return Config{}, errors.New("timeouts must be positive")
+	}
+	if cfg.MaxBlobSize <= 0 {
+		return Config{}, errors.New("max-blob-size must be positive")
 	}
 	if cfg.ShutdownTimeout <= 0 {
 		return Config{}, errors.New("shutdown-timeout must be positive")
