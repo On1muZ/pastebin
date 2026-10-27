@@ -14,6 +14,7 @@ import (
 const (
 	WorkerPoolLimit     = 50
 	TimeoutToDeleteBlob = 5 * time.Second
+	BlobToDeleteLimit   = 500
 )
 
 type DeleteWorker struct {
@@ -55,7 +56,7 @@ func (d *DeleteWorker) Run(ctx context.Context) {
 }
 
 func (d *DeleteWorker) DeleteOnce(ctx context.Context) {
-	blobsToDelete, err := d.store.ListDeleting(ctx, 50)
+	blobsToDelete, err := d.store.ListDeleting(ctx, BlobToDeleteLimit)
 	jobs := make(chan string)
 	if err != nil {
 		d.log.Error("delete worker could not get blobs to delete", slog.String("error", err.Error()))

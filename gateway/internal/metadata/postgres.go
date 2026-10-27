@@ -186,7 +186,7 @@ func (p *Postgres) ListUnderReplicated(ctx context.Context, limit, want int) ([]
 	}
 	blobsInfo := make([]BlobInfo, 0, len(blobs))
 	for _, b := range blobs {
-		blobsInfo = append(blobsInfo, toBlobInfo(b.Blob))
+		blobsInfo = append(blobsInfo, toBlobInfo(b))
 	}
 	return blobsInfo, nil
 }

@@ -6,6 +6,8 @@ package db
 
 import (
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Blob struct {
@@ -13,6 +15,7 @@ type Blob struct {
 	Size      int64
 	Hash      *string
 	Status    string
+	CheckedAt pgtype.Timestamptz
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

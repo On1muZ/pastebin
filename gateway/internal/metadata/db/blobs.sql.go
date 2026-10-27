@@ -14,7 +14,8 @@ UPDATE blobs
 SET
   status = 'committed',
   hash = $1,
-  updated_at = now()
+  updated_at = now(),
+  checked_at = NULL
 WHERE
   id = $2
   AND status = 'pending'
@@ -70,7 +71,7 @@ func (q *Queries) DeleteBlob(ctx context.Context, id string) (int64, error) {
 
 const getBlob = `-- name: GetBlob :one
 SELECT
-  id, size, hash, status, created_at, updated_at
+  id, size, hash, status, checked_at, created_at, updated_at
 FROM
   blobs
 WHERE
@@ -85,6 +86,7 @@ func (q *Queries) GetBlob(ctx context.Context, id string) (Blob, error) {
 		&i.Size,
 		&i.Hash,
 		&i.Status,
+		&i.CheckedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -92,16 +94,26 @@ func (q *Queries) GetBlob(ctx context.Context, id string) (Blob, error) {
 }
 
 const listDeleting = `-- name: ListDeleting :many
-SELECT
-  id, size, hash, status, created_at, updated_at
-FROM
-  blobs
+UPDATE blobs
+SET
+  checked_at = now()
 WHERE
-  status = 'deleting'
-ORDER BY
-  updated_at
-LIMIT
-  $1
+  id IN (
+    SELECT
+      id
+    FROM
+      blobs
+    WHERE
+      status = 'deleting'
+    ORDER BY
+      checked_at NULLS FIRST
+    LIMIT
+      $1
+    FOR UPDATE
+      SKIP LOCKED
+  )
+RETURNING
+  id, size, hash, status, checked_at, created_at, updated_at
 `
 
 func (q *Queries) ListDeleting(ctx context.Context, limit int32) ([]Blob, error) {
@@ -118,6 +130,7 @@ func (q *Queries) ListDeleting(ctx context.Context, limit int32) ([]Blob, error)
 			&i.Size,
 			&i.Hash,
 			&i.Status,
+			&i.CheckedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -132,24 +145,35 @@ func (q *Queries) ListDeleting(ctx context.Context, limit int32) ([]Blob, error)
 }
 
 const listUnderReplicated = `-- name: ListUnderReplicated :many
-SELECT
-  b.id, b.size, b.hash, b.status, b.created_at, b.updated_at
-FROM
-  blobs AS b
-  LEFT JOIN replicas AS r ON r.blob_id = b.id
+UPDATE blobs
+SET
+  checked_at = now()
 WHERE
-  b.status = 'committed'
-GROUP BY
-  b.id
-HAVING
-  count(*) FILTER (
+  id IN (
+    SELECT
+      b.id
+    FROM
+      blobs AS b
     WHERE
-      r.status = 'committed'
-  ) < $1::int
-ORDER BY
-  b.updated_at
-LIMIT
-  $2
+      b.status = 'committed'
+      AND (
+        SELECT
+          count(*)
+        FROM
+          replicas AS r
+        WHERE
+          r.blob_id = b.id
+          AND r.status = 'committed'
+      ) < $1::INT
+    ORDER BY
+      b.checked_at NULLS FIRST
+    LIMIT
+      $2
+    FOR UPDATE
+      SKIP LOCKED
+  )
+RETURNING
+  id, size, hash, status, checked_at, created_at, updated_at
 `
 
 type ListUnderReplicatedParams struct {
@@ -157,26 +181,23 @@ type ListUnderReplicatedParams struct {
 	Lim  int32
 }
 
-type ListUnderReplicatedRow struct {
-	Blob Blob
-}
-
-func (q *Queries) ListUnderReplicated(ctx context.Context, arg ListUnderReplicatedParams) ([]ListUnderReplicatedRow, error) {
+func (q *Queries) ListUnderReplicated(ctx context.Context, arg ListUnderReplicatedParams) ([]Blob, error) {
 	rows, err := q.db.Query(ctx, listUnderReplicated, arg.Want, arg.Lim)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListUnderReplicatedRow
+	var items []Blob
 	for rows.Next() {
-		var i ListUnderReplicatedRow
+		var i Blob
 		if err := rows.Scan(
-			&i.Blob.ID,
-			&i.Blob.Size,
-			&i.Blob.Hash,
-			&i.Blob.Status,
-			&i.Blob.CreatedAt,
-			&i.Blob.UpdatedAt,
+			&i.ID,
+			&i.Size,
+			&i.Hash,
+			&i.Status,
+			&i.CheckedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -206,7 +227,8 @@ func (q *Queries) MarkBlobDeleting(ctx context.Context, id string) (int64, error
 }
 
 const setLocalAsyncCommit = `-- name: SetLocalAsyncCommit :exec
-SET LOCAL synchronous_commit = off
+SET
+  LOCAL synchronous_commit = off
 `
 
 func (q *Queries) SetLocalAsyncCommit(ctx context.Context) error {

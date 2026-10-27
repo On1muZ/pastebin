@@ -18,7 +18,8 @@ UPDATE blobs
 SET
   status = 'committed',
   hash = $1,
-  updated_at = now()
+  updated_at = now(),
+  checked_at = NULL
 WHERE
   id = $2
   AND status = 'pending';
@@ -37,36 +38,58 @@ WHERE
   id = $1;
 
 -- name: ListDeleting :many
-SELECT
-  *
-FROM
-  blobs
+UPDATE blobs
+SET
+  checked_at = now()
 WHERE
-  status = 'deleting'
-ORDER BY
-  updated_at
-LIMIT
-  $1;
+  id IN (
+    SELECT
+      id
+    FROM
+      blobs
+    WHERE
+      status = 'deleting'
+    ORDER BY
+      checked_at NULLS FIRST
+    LIMIT
+      $1
+    FOR UPDATE
+      SKIP LOCKED
+  )
+RETURNING
+  *;
 
 -- name: ListUnderReplicated :many
-SELECT
-  sqlc.embed(b)
-FROM
-  blobs AS b
-  LEFT JOIN replicas AS r ON r.blob_id = b.id
+UPDATE blobs
+SET
+  checked_at = now()
 WHERE
-  b.status = 'committed'
-GROUP BY
-  b.id
-HAVING
-  count(*) FILTER (
+  id IN (
+    SELECT
+      b.id
+    FROM
+      blobs AS b
     WHERE
-      r.status = 'committed'
-  ) < sqlc.arg(want)::int
-ORDER BY
-  b.updated_at
-LIMIT
-  sqlc.arg(lim);
+      b.status = 'committed'
+      AND (
+        SELECT
+          count(*)
+        FROM
+          replicas AS r
+        WHERE
+          r.blob_id = b.id
+          AND r.status = 'committed'
+      ) < sqlc.arg(want)::INT
+    ORDER BY
+      b.checked_at NULLS FIRST
+    LIMIT
+      sqlc.arg(lim)
+    FOR UPDATE
+      SKIP LOCKED
+  )
+RETURNING
+  *;
 
 -- name: SetLocalAsyncCommit :exec
-SET LOCAL synchronous_commit = off;
+SET
+  LOCAL synchronous_commit = off;
