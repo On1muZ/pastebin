@@ -7,12 +7,11 @@
 package storagenodev1
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -440,7 +439,6 @@ type GetStatusResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TotalBytes    int64                  `protobuf:"varint,1,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
 	FreeBytes     int64                  `protobuf:"varint,2,opt,name=free_bytes,json=freeBytes,proto3" json:"free_bytes,omitempty"`
-	BlobCount     int64                  `protobuf:"varint,3,opt,name=blob_count,json=blobCount,proto3" json:"blob_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -489,13 +487,6 @@ func (x *GetStatusResponse) GetFreeBytes() int64 {
 	return 0
 }
 
-func (x *GetStatusResponse) GetBlobCount() int64 {
-	if x != nil {
-		return x.BlobCount
-	}
-	return 0
-}
-
 var File_storagenode_v1_node_proto protoreflect.FileDescriptor
 
 const file_storagenode_v1_node_proto_rawDesc = "" +
@@ -524,14 +515,13 @@ const file_storagenode_v1_node_proto_rawDesc = "" +
 	"\x11DeleteBlobRequest\x12\x17\n" +
 	"\ablob_id\x18\x01 \x01(\tR\x06blobId\"\x14\n" +
 	"\x12DeleteBlobResponse\"\x12\n" +
-	"\x10GetStatusRequest\"r\n" +
+	"\x10GetStatusRequest\"e\n" +
 	"\x11GetStatusResponse\x12\x1f\n" +
 	"\vtotal_bytes\x18\x01 \x01(\x03R\n" +
 	"totalBytes\x12\x1d\n" +
 	"\n" +
-	"free_bytes\x18\x02 \x01(\x03R\tfreeBytes\x12\x1d\n" +
-	"\n" +
-	"blob_count\x18\x03 \x01(\x03R\tblobCount2\xd0\x02\n" +
+	"free_bytes\x18\x02 \x01(\x03R\tfreeBytesJ\x04\b\x03\x10\x04R\n" +
+	"blob_count2\xd0\x02\n" +
 	"\vStorageNode\x12L\n" +
 	"\aPutBlob\x12\x1e.storagenode.v1.PutBlobRequest\x1a\x1f.storagenode.v1.PutBlobResponse(\x01\x12L\n" +
 	"\aGetBlob\x12\x1e.storagenode.v1.GetBlobRequest\x1a\x1f.storagenode.v1.GetBlobResponse0\x01\x12S\n" +

@@ -410,28 +410,8 @@ func TestGetStatus(t *testing.T) {
 	}
 
 	st := status()
-	if st.GetBlobCount() != 0 {
-		t.Errorf("BlobCount = %d, want 0", st.GetBlobCount())
-	}
 	if st.GetTotalBytes() <= 0 || st.GetFreeBytes() <= 0 || st.GetFreeBytes() > st.GetTotalBytes() {
 		t.Errorf("weird disk stats: total=%d free=%d", st.GetTotalBytes(), st.GetFreeBytes())
-	}
-
-	id1, id2 := newID(t), newID(t)
-	for _, id := range []string{id1, id2} {
-		if _, err := env.putBlob(ctx, id, []byte("x"), 1024); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if got := status().GetBlobCount(); got != 2 {
-		t.Errorf("after 2 puts BlobCount = %d, want 2", got)
-	}
-
-	if _, err := env.client.DeleteBlob(ctx, &storagenodev1.DeleteBlobRequest{BlobId: id1}); err != nil {
-		t.Fatal(err)
-	}
-	if got := status().GetBlobCount(); got != 1 {
-		t.Errorf("after delete BlobCount = %d, want 1", got)
 	}
 }
 

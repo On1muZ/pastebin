@@ -44,7 +44,8 @@ message DeleteBlobResponse {}
 message GetStatusRequest {}
 
 message GetStatusResponse {
+  reserved 3;
+  reserved "blob_count";
   int64 total_bytes = 1;
   int64 free_bytes = 2;
-  int64 blob_count = 3;
 }

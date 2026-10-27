@@ -140,7 +140,6 @@ func (s *Server) GetStatus(ctx context.Context, _ *storagenodev1.GetStatusReques
 	return &storagenodev1.GetStatusResponse{
 		TotalBytes: st.TotalBytes,
 		FreeBytes:  st.FreeBytes,
-		BlobCount:  st.BlobCount,
 	}, nil
 }
 

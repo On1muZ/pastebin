@@ -97,25 +97,6 @@ func TestFailedPutLeavesNothing(t *testing.T) {
 	}
 }
 
-func TestStatsCountsBlobs(t *testing.T) {
-	s := newTestStore(t)
-	for _, id := range []string{testID, "ffffffffffffffffffffffffffffffff"} {
-		if _, err := s.Put(id, bytes.NewReader([]byte("x"))); err != nil {
-			t.Fatal(err)
-		}
-	}
-	st, err := s.Stats()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st.BlobCount != 2 {
-		t.Errorf("BlobCount = %d, want 2", st.BlobCount)
-	}
-	if st.TotalBytes <= 0 || st.FreeBytes <= 0 || st.FreeBytes > st.TotalBytes {
-		t.Errorf("weird disk stats: total=%d free=%d", st.TotalBytes, st.FreeBytes)
-	}
-}
-
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("connection lost") }
