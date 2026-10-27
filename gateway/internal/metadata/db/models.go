@@ -29,6 +29,7 @@ type Replica struct {
 	BlobID    string
 	NodeID    string
 	Status    string
+	CheckedAt pgtype.Timestamptz
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

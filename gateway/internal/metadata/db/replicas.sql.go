@@ -149,7 +149,7 @@ func (q *Queries) DeleteReplica(ctx context.Context, arg DeleteReplicaParams) (i
 
 const getCommittedReplicas = `-- name: GetCommittedReplicas :many
 SELECT
-  r.blob_id, r.node_id, r.status, r.created_at, r.updated_at
+  r.blob_id, r.node_id, r.status, r.checked_at, r.created_at, r.updated_at
 FROM
   replicas AS r
   JOIN blobs AS b ON b.id = r.blob_id
@@ -176,6 +176,7 @@ func (q *Queries) GetCommittedReplicas(ctx context.Context, blobID string) ([]Ge
 			&i.Replica.BlobID,
 			&i.Replica.NodeID,
 			&i.Replica.Status,
+			&i.Replica.CheckedAt,
 			&i.Replica.CreatedAt,
 			&i.Replica.UpdatedAt,
 		); err != nil {
@@ -191,7 +192,7 @@ func (q *Queries) GetCommittedReplicas(ctx context.Context, blobID string) ([]Ge
 
 const getReplica = `-- name: GetReplica :one
 SELECT
-  blob_id, node_id, status, created_at, updated_at
+  blob_id, node_id, status, checked_at, created_at, updated_at
 FROM
   replicas
 WHERE
@@ -211,6 +212,7 @@ func (q *Queries) GetReplica(ctx context.Context, arg GetReplicaParams) (Replica
 		&i.BlobID,
 		&i.NodeID,
 		&i.Status,
+		&i.CheckedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -219,7 +221,7 @@ func (q *Queries) GetReplica(ctx context.Context, arg GetReplicaParams) (Replica
 
 const getReplicas = `-- name: GetReplicas :many
 SELECT
-  blob_id, node_id, status, created_at, updated_at
+  blob_id, node_id, status, checked_at, created_at, updated_at
 FROM
   replicas
 WHERE
@@ -239,6 +241,66 @@ func (q *Queries) GetReplicas(ctx context.Context, blobID string) ([]Replica, er
 			&i.BlobID,
 			&i.NodeID,
 			&i.Status,
+			&i.CheckedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStalePendingReplicas = `-- name: ListStalePendingReplicas :many
+UPDATE replicas
+SET
+  checked_at = now()
+WHERE
+  (blob_id, node_id) IN (
+    SELECT
+      r.blob_id,
+      r.node_id
+    FROM
+      replicas AS r
+      JOIN blobs AS b ON b.id = r.blob_id
+    WHERE
+      r.status = 'pending'
+      AND b.status = 'committed'
+      AND r.updated_at < now() - make_interval(secs => $1::FLOAT8)
+    ORDER BY
+      r.checked_at NULLS FIRST
+    LIMIT
+      $2
+    FOR UPDATE OF
+      r SKIP LOCKED
+  )
+RETURNING
+  blob_id, node_id, status, checked_at, created_at, updated_at
+`
+
+type ListStalePendingReplicasParams struct {
+	StaleSecs float64
+	Lim       int32
+}
+
+func (q *Queries) ListStalePendingReplicas(ctx context.Context, arg ListStalePendingReplicasParams) ([]Replica, error) {
+	rows, err := q.db.Query(ctx, listStalePendingReplicas, arg.StaleSecs, arg.Lim)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Replica
+	for rows.Next() {
+		var i Replica
+		if err := rows.Scan(
+			&i.BlobID,
+			&i.NodeID,
+			&i.Status,
+			&i.CheckedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -263,5 +325,19 @@ WHERE
 
 func (q *Queries) MarkReplicasDeleting(ctx context.Context, blobID string) error {
 	_, err := q.db.Exec(ctx, markReplicasDeleting, blobID)
+	return err
+}
+
+const markReplicasDeletingByBlobs = `-- name: MarkReplicasDeletingByBlobs :exec
+UPDATE replicas
+SET
+  status = 'deleting',
+  updated_at = now()
+WHERE
+  blob_id = ANY ($1::TEXT[])
+`
+
+func (q *Queries) MarkReplicasDeletingByBlobs(ctx context.Context, blobIds []string) error {
+	_, err := q.db.Exec(ctx, markReplicasDeletingByBlobs, blobIds)
 	return err
 }

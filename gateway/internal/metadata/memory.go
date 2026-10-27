@@ -348,3 +348,52 @@ func (m *Memory) GetCommittedReplicas(ctx context.Context, blobID string) ([]Rep
 		return r.Status != Committed
 	}), nil
 }
+
+func (m *Memory) MarkStalePendingDeleting(ctx context.Context, stale time.Duration) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	deadline := time.Now().UTC().Add(-stale)
+	marked := 0
+	for _, b := range m.Blobs {
+		if b.Status != Pending || !b.UpdatedAt.Before(deadline) {
+			continue
+		}
+		b.Status = Deleting
+		b.UpdatedAt = time.Now().UTC()
+		for _, r := range m.Replicas {
+			if r.BlobID == b.ID {
+				r.Status = Deleting
+				r.UpdatedAt = time.Now().UTC()
+			}
+		}
+		marked++
+	}
+	return marked, nil
+}
+
+func (m *Memory) ListStalePendingReplicas(ctx context.Context, limit int, stale time.Duration) ([]ReplicaInfo, error) {
+	replicas := make([]ReplicaInfo, 0)
+	if limit == 0 {
+		return replicas, nil
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	deadline := time.Now().UTC().Add(-stale)
+	for _, r := range m.Replicas {
+		if r.Status != Pending || !r.UpdatedAt.Before(deadline) {
+			continue
+		}
+		committed := slices.ContainsFunc(m.Blobs, func(b *BlobInfo) bool {
+			return b.ID == r.BlobID && b.Status == Committed
+		})
+		if !committed {
+			continue
+		}
+		replicas = append(replicas, *r)
+		limit--
+		if limit == 0 {
+			break
+		}
+	}
+	return replicas, nil
+}

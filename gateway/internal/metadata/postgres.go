@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"pastebin/gateway/internal/metadata/db"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -277,6 +278,44 @@ func (p *Postgres) GetCommittedReplicas(ctx context.Context, blobID string) ([]R
 	replicasInfo := make([]ReplicaInfo, 0, len(rows))
 	for _, r := range rows {
 		replicasInfo = append(replicasInfo, toReplicaInfo(r.Replica))
+	}
+	return replicasInfo, nil
+}
+
+func (p *Postgres) MarkStalePendingDeleting(ctx context.Context, stale time.Duration) (int, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return 0, toError(err)
+	}
+	defer tx.Rollback(ctx)
+	qtx := p.q.WithTx(tx)
+	ids, err := qtx.MarkStaleBlobsDeleting(ctx, stale.Seconds())
+	if err != nil {
+		return 0, toError(err)
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	if err := qtx.MarkReplicasDeletingByBlobs(ctx, ids); err != nil {
+		return 0, toError(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return 0, toError(err)
+	}
+	return len(ids), nil
+}
+
+func (p *Postgres) ListStalePendingReplicas(ctx context.Context, limit int, stale time.Duration) ([]ReplicaInfo, error) {
+	replicas, err := p.q.ListStalePendingReplicas(ctx, db.ListStalePendingReplicasParams{
+		StaleSecs: stale.Seconds(),
+		Lim:       int32(limit),
+	})
+	if err != nil {
+		return nil, toError(err)
+	}
+	replicasInfo := make([]ReplicaInfo, 0, len(replicas))
+	for _, r := range replicas {
+		replicasInfo = append(replicasInfo, toReplicaInfo(r))
 	}
 	return replicasInfo, nil
 }

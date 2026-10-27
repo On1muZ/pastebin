@@ -93,3 +93,37 @@ WHERE
   r.blob_id = $1
   AND b.status = 'committed'
   AND r.status = 'committed';
+
+-- name: MarkReplicasDeletingByBlobs :exec
+UPDATE replicas
+SET
+  status = 'deleting',
+  updated_at = now()
+WHERE
+  blob_id = ANY (sqlc.arg(blob_ids)::TEXT[]);
+
+-- name: ListStalePendingReplicas :many
+UPDATE replicas
+SET
+  checked_at = now()
+WHERE
+  (blob_id, node_id) IN (
+    SELECT
+      r.blob_id,
+      r.node_id
+    FROM
+      replicas AS r
+      JOIN blobs AS b ON b.id = r.blob_id
+    WHERE
+      r.status = 'pending'
+      AND b.status = 'committed'
+      AND r.updated_at < now() - make_interval(secs => sqlc.arg(stale_secs)::FLOAT8)
+    ORDER BY
+      r.checked_at NULLS FIRST
+    LIMIT
+      sqlc.arg(lim)
+    FOR UPDATE OF
+      r SKIP LOCKED
+  )
+RETURNING
+  *;

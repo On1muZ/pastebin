@@ -226,6 +226,38 @@ func (q *Queries) MarkBlobDeleting(ctx context.Context, id string) (int64, error
 	return result.RowsAffected(), nil
 }
 
+const markStaleBlobsDeleting = `-- name: MarkStaleBlobsDeleting :many
+UPDATE blobs
+SET
+  status = 'deleting',
+  updated_at = now()
+WHERE
+  status = 'pending'
+  AND updated_at < now() - make_interval(secs => $1::FLOAT8)
+RETURNING
+  id
+`
+
+func (q *Queries) MarkStaleBlobsDeleting(ctx context.Context, staleSecs float64) ([]string, error) {
+	rows, err := q.db.Query(ctx, markStaleBlobsDeleting, staleSecs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setLocalAsyncCommit = `-- name: SetLocalAsyncCommit :exec
 SET
   LOCAL synchronous_commit = off

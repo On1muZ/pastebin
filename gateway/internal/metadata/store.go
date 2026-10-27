@@ -57,4 +57,6 @@ type Store interface {
 	FinishUpload(ctx context.Context, id, hash string, committed, failed []string) error
 	DropPendingReplicas(ctx context.Context, blobID string, nodeIDs []string) error
 	GetCommittedReplicas(ctx context.Context, blobID string) ([]ReplicaInfo, error)
+	MarkStalePendingDeleting(ctx context.Context, stale time.Duration) (int, error)
+	ListStalePendingReplicas(ctx context.Context, limit int, stale time.Duration) ([]ReplicaInfo, error)
 }

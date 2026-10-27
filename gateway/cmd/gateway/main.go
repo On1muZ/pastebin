@@ -118,6 +118,10 @@ func run(cfg Config, log *slog.Logger) error {
 	wg.Go(func() { replicateWorker.Run(ctx) })
 	log.Info("replicate worker was run", slog.Duration("interval", cfg.ReplicateInterval))
 
+	janitorWorker := workers.NewJanitorWorker(cfg.JanitorInterval, cfg.PendingStale, log, store, tr, pool)
+	wg.Go(func() { janitorWorker.Run(ctx) })
+	log.Info("janitor worker was run", slog.Duration("interval", cfg.JanitorInterval), slog.Duration("pending_stale", cfg.PendingStale))
+
 	lis, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
 		cancel()

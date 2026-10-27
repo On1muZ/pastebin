@@ -93,3 +93,14 @@ RETURNING
 -- name: SetLocalAsyncCommit :exec
 SET
   LOCAL synchronous_commit = off;
+
+-- name: MarkStaleBlobsDeleting :many
+UPDATE blobs
+SET
+  status = 'deleting',
+  updated_at = now()
+WHERE
+  status = 'pending'
+  AND updated_at < now() - make_interval(secs => sqlc.arg(stale_secs)::FLOAT8)
+RETURNING
+  id;

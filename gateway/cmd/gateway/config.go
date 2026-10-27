@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"pastebin/gateway/internal/workers"
 	"strings"
 	"time"
 )
@@ -31,6 +32,8 @@ type Config struct {
 	CheckInterval     time.Duration
 	DeleteInterval    time.Duration
 	ReplicateInterval time.Duration
+	JanitorInterval   time.Duration
+	PendingStale      time.Duration
 	CheckTimeout      time.Duration
 	WriteTimeout      time.Duration
 	MaxBlobSize       int64
@@ -47,6 +50,8 @@ func loadConfig(args []string) (Config, error) {
 	checkInterval := fs.Duration("check-interval", 5*time.Second, "интервал проверки нод")
 	deleteInterval := fs.Duration("delete-interval", 10*time.Second, "интервал delete worker")
 	replicateInterval := fs.Duration("replicate-interval", 30*time.Second, "интервал replicate worker")
+	janitorInterval := fs.Duration("janitor-interval", time.Minute, "интервал janitor worker")
+	pendingStale := fs.Duration("pending-stale", 5*time.Minute, "через сколько pending blob или реплика считается брошенной")
 	checkTimeout := fs.Duration("check-timeout", 5*time.Second, "таймаут проверки одной ноды")
 	writeTimeout := fs.Duration("write-timeout", 4*time.Second, "таймаут записи blob на ноды")
 	maxBlobSize := fs.Int64("max-blob-size", 512<<10, "максимальный размер blob в байтах")
@@ -64,6 +69,8 @@ func loadConfig(args []string) (Config, error) {
 		CheckInterval:     *checkInterval,
 		DeleteInterval:    *deleteInterval,
 		ReplicateInterval: *replicateInterval,
+		JanitorInterval:   *janitorInterval,
+		PendingStale:      *pendingStale,
 		CheckTimeout:      *checkTimeout,
 		WriteTimeout:      *writeTimeout,
 		MaxBlobSize:       *maxBlobSize,
@@ -84,11 +91,14 @@ func loadConfig(args []string) (Config, error) {
 	if cfg.DSN == "" {
 		return Config{}, errors.New("GATEWAY_DSN is not set")
 	}
-	if cfg.CheckInterval <= 0 || cfg.DeleteInterval <= 0 || cfg.ReplicateInterval <= 0 {
+	if cfg.CheckInterval <= 0 || cfg.DeleteInterval <= 0 || cfg.ReplicateInterval <= 0 || cfg.JanitorInterval <= 0 {
 		return Config{}, errors.New("intervals must be positive")
 	}
 	if cfg.CheckTimeout <= 0 || cfg.WriteTimeout <= 0 {
 		return Config{}, errors.New("timeouts must be positive")
+	}
+	if cfg.PendingStale <= cfg.WriteTimeout || cfg.PendingStale <= workers.TimeoutToReplicateBlob {
+		return Config{}, fmt.Errorf("pending-stale must be greater than write-timeout and %s replicate timeout", workers.TimeoutToReplicateBlob)
 	}
 	if cfg.MaxBlobSize <= 0 {
 		return Config{}, errors.New("max-blob-size must be positive")
