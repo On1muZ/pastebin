@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -20,11 +21,6 @@ import (
 
 const metadataTimeout = 2 * time.Second
 
-var (
-	errAllUploadsFailed = errors.New("all uploads failed")
-	errSizeMismatch     = errors.New("size mismatch")
-)
-
 func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 	hdr, err := recvHeader(stream)
 	if err != nil {
@@ -35,6 +31,11 @@ func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 		return status.Errorf(codes.InvalidArgument, "blob size %d is greater than max %d bytes", size, s.cfg.MaxBlobSize)
 	}
 
+	data, sha, err := s.readBody(stream, size)
+	if err != nil {
+		return err
+	}
+
 	nodes, err := s.pickNodes(size)
 	if err != nil {
 		return err
@@ -43,21 +44,14 @@ func (s *Server) PutBlob(stream storagenodev1.StorageNode_PutBlobServer) error {
 		return s.toStatus(err)
 	}
 
-	ctx, cancel := context.WithTimeout(stream.Context(), s.cfg.WriteTimeout)
-	defer cancel()
-	f, failed := s.startUploads(ctx, id, size, nodes)
-	if len(f.uploads) == 0 {
+	uploads, failed := s.writeToNodes(stream.Context(), id, data, nodes)
+	if len(uploads) == 0 {
 		s.dropReplicas(stream.Context(), id, failed)
 		return status.Error(codes.Unavailable, "could not start upload on any node")
 	}
 
-	sha, pumpErr := s.pump(stream, size, f)
-	committed, dropped := s.settle(id, sha, size, f.uploads)
+	committed, dropped := s.settle(id, sha, size, uploads)
 	failed = append(failed, dropped...)
-	if pumpErr != nil {
-		s.dropReplicas(stream.Context(), id, failed)
-		return pumpErr
-	}
 	if len(committed) == 0 {
 		s.dropReplicas(stream.Context(), id, failed)
 		s.log.Error("all picked nodes could not write file", slog.String("blob_id", id))
@@ -129,41 +123,9 @@ func (s *Server) pickNodes(size int64) ([]*nodepool.Node, error) {
 }
 
 type upload struct {
-	node   *nodepool.Node
-	pw     *io.PipeWriter
-	failed bool
-	sha    string
-	err    error
-}
-
-type fanout struct {
-	uploads []*upload
-	wg      sync.WaitGroup
-}
-
-func (f *fanout) Write(p []byte) (int, error) {
-	alive := 0
-	for _, u := range f.uploads {
-		if u.failed {
-			continue
-		}
-		if _, err := u.pw.Write(p); err != nil {
-			u.failed = true
-			continue
-		}
-		alive++
-	}
-	if alive == 0 {
-		return 0, errAllUploadsFailed
-	}
-	return len(p), nil
-}
-
-func (f *fanout) finish(err error) {
-	for _, u := range f.uploads {
-		u.pw.CloseWithError(err)
-	}
-	f.wg.Wait()
+	node *nodepool.Node
+	sha  string
+	err  error
 }
 
 func nodeIDs(nodes []*nodepool.Node) []string {
@@ -174,9 +136,31 @@ func nodeIDs(nodes []*nodepool.Node) []string {
 	return ids
 }
 
-func (s *Server) startUploads(ctx context.Context, id string, size int64, nodes []*nodepool.Node) (*fanout, []string) {
-	f := &fanout{}
+func (s *Server) readBody(stream storagenodev1.StorageNode_PutBlobServer, size int64) ([]byte, string, error) {
+	r := &chunkReader{stream: stream}
+	data := make([]byte, size)
+	n, err := io.ReadFull(r, data)
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, "", status.Errorf(codes.InvalidArgument, "size mismatch: header says %d, got %d", size, n)
+	}
+	if err != nil {
+		return nil, "", s.toStatus(err)
+	}
+	extra, err := r.Read(make([]byte, 1))
+	if extra > 0 {
+		return nil, "", status.Errorf(codes.InvalidArgument, "size mismatch: header says %d, got more", size)
+	}
+	if !errors.Is(err, io.EOF) {
+		return nil, "", s.toStatus(err)
+	}
+	sum := sha256.Sum256(data)
+	return data, hex.EncodeToString(sum[:]), nil
+}
+
+func (s *Server) writeToNodes(ctx context.Context, id string, data []byte, nodes []*nodepool.Node) ([]*upload, []string) {
+	uploads := make([]*upload, 0, len(nodes))
 	var failed []string
+	var wg sync.WaitGroup
 	for _, node := range nodes {
 		client, err := s.transport.Client(node)
 		if err != nil {
@@ -184,43 +168,21 @@ func (s *Server) startUploads(ctx context.Context, id string, size int64, nodes 
 			failed = append(failed, node.ID)
 			continue
 		}
-		pr, pw := io.Pipe()
-		u := &upload{node: node, pw: pw}
-		f.uploads = append(f.uploads, u)
-		f.wg.Go(func() {
-			u.sha, u.err = nodeio.Write(ctx, client, id, size, pr)
-			if u.err != nil {
-				pr.CloseWithError(u.err)
-			}
+		u := &upload{node: node}
+		uploads = append(uploads, u)
+		wg.Go(func() {
+			ctx, cancel := context.WithTimeout(ctx, s.cfg.WriteTimeout)
+			defer cancel()
+			u.sha, u.err = nodeio.Write(ctx, client, id, int64(len(data)), bytes.NewReader(data))
 		})
 	}
-	return f, failed
-}
-
-func (s *Server) pump(stream storagenodev1.StorageNode_PutBlobServer, size int64, f *fanout) (string, error) {
-	h := sha256.New()
-	r := io.TeeReader(io.LimitReader(&chunkReader{stream: stream}, size+1), h)
-	n, err := io.CopyBuffer(f, r, make([]byte, chunkSize))
-	switch {
-	case errors.Is(err, errAllUploadsFailed):
-		f.finish(err)
-		return "", nil
-	case err != nil:
-		f.finish(err)
-		return "", s.toStatus(err)
-	case n != size:
-		f.finish(errSizeMismatch)
-		return "", status.Errorf(codes.InvalidArgument, "size mismatch: header says %d, got %d", size, n)
-	}
-	f.finish(nil)
-	return hex.EncodeToString(h.Sum(nil)), nil
+	wg.Wait()
+	return uploads, failed
 }
 
 func (s *Server) settle(id, sha string, size int64, uploads []*upload) (committed, failed []string) {
 	for _, u := range uploads {
 		switch {
-		case sha == "":
-			failed = append(failed, u.node.ID)
 		case u.err == nil && u.sha == sha:
 			u.node.DeleteFreeSpace(size)
 			committed = append(committed, u.node.ID)
